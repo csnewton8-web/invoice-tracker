@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { InvoiceRecord } from "@/types/invoice";
 
 function parseLocalDate(date: string | null) {
@@ -45,6 +47,25 @@ function statusText(date: string | null) {
   return `Due in ${d} days`;
 }
 
+const currencyOptions = [
+  "GBP",
+  "EUR",
+  "USD",
+  "AUD",
+  "CAD",
+  "CHF",
+  "CNY",
+  "DKK",
+  "HKD",
+  "INR",
+  "JPY",
+  "NOK",
+  "NZD",
+  "SEK",
+  "SGD",
+  "ZAR",
+];
+
 export function InvoiceTable({
   invoices,
   onViewInvoice,
@@ -62,6 +83,10 @@ export function InvoiceTable({
   payLinkUrl: string;
   selectedInvoiceId: string | null;
 }) {
+  const [editing, setEditing] = useState<string | null>(null);
+  const [value, setValue] = useState("");
+  const router = useRouter();
+
   if (!invoices.length) {
     return (
       <div className="rounded-2xl border bg-white p-6 text-sm text-slate-600">
@@ -73,6 +98,247 @@ export function InvoiceTable({
   const allSelected =
     invoices.length > 0 &&
     invoices.every((inv) => selectedIds.includes(inv.id));
+
+  async function save(
+    id: string,
+    field: string,
+    invoice: InvoiceRecord,
+    incomingValue?: string
+  ) {
+    let finalValue: string | number | null =
+      incomingValue !== undefined ? incomingValue : value;
+
+    if (field === "due_date" || field === "invoice_date") {
+      const newDate = parseLocalDate(String(finalValue));
+
+      const issueDate =
+        field === "invoice_date"
+          ? newDate
+          : parseLocalDate(invoice.invoice_date);
+
+      const dueDate =
+        field === "due_date"
+          ? newDate
+          : parseLocalDate(invoice.due_date);
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      if (field === "invoice_date" && newDate && newDate > today) {
+        setEditing(null);
+        setTimeout(() => {
+          alert("Invoice issue date cannot be in the future");
+        }, 0);
+        return;
+      }
+
+      if (issueDate && dueDate && dueDate < issueDate) {
+        setEditing(null);
+        setTimeout(() => {
+          alert("Due date cannot be earlier than invoice issue date");
+        }, 0);
+        return;
+      }
+    }
+
+    if (field === "total") {
+      finalValue =
+        String(finalValue).trim() === "" ? null : Number(finalValue);
+
+      if (finalValue !== null && Number.isNaN(finalValue)) {
+        alert("Please enter a valid number for Total.");
+        return;
+      }
+    }
+
+    if (field === "currency") {
+      finalValue = String(finalValue).trim().toUpperCase();
+    }
+
+    const res = await fetch("/api/invoices/update", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ id, field, value: finalValue }),
+    });
+
+    if (!res.ok) {
+      alert("Could not save your change.");
+      return;
+    }
+
+    setEditing(null);
+    router.refresh();
+  }
+
+  function editableTextCell(
+    id: string,
+    field: "supplier" | "invoice_number",
+    current: string | null,
+    invoice: InvoiceRecord
+  ) {
+    const key = `${id}-${field}`;
+
+    if (editing === key) {
+      return (
+        <input
+          autoFocus
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onBlur={() => save(id, field, invoice)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") save(id, field, invoice);
+            if (e.key === "Escape") setEditing(null);
+          }}
+          className="w-full rounded border px-2 py-1 text-sm"
+        />
+      );
+    }
+
+    return (
+      <span
+        className="cursor-pointer"
+        onClick={() => {
+          setEditing(key);
+          setValue(current ?? "");
+        }}
+      >
+        {current || "—"}
+      </span>
+    );
+  }
+
+  function editableNumberCell(
+    id: string,
+    current: number | null,
+    invoice: InvoiceRecord
+  ) {
+    const key = `${id}-total`;
+
+    if (editing === key) {
+      return (
+        <input
+          type="number"
+          step="0.01"
+          autoFocus
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onBlur={() => save(id, "total", invoice)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") save(id, "total", invoice);
+            if (e.key === "Escape") setEditing(null);
+          }}
+          className="w-full rounded border px-2 py-1 text-sm"
+        />
+      );
+    }
+
+    return (
+      <span
+        className="cursor-pointer"
+        onClick={() => {
+          setEditing(key);
+          setValue(current != null ? String(current) : "");
+        }}
+      >
+        {current != null ? String(current) : "—"}
+      </span>
+    );
+  }
+
+  function editableDateCell(
+    id: string,
+    field: "invoice_date" | "due_date",
+    current: string | null,
+    invoice: InvoiceRecord
+  ) {
+    const key = `${id}-${field}`;
+
+    if (editing === key) {
+      return (
+        <input
+          type="date"
+          autoFocus
+          value={current || ""}
+          onChange={(e) => {
+            const selectedDate = e.target.value;
+
+            const updatedInvoice: InvoiceRecord =
+              field === "invoice_date"
+                ? { ...invoice, invoice_date: selectedDate }
+                : { ...invoice, due_date: selectedDate };
+
+            save(id, field, updatedInvoice, selectedDate);
+          }}
+          onKeyDown={(e) => {
+            e.preventDefault();
+          }}
+          onPaste={(e) => e.preventDefault()}
+          className="rounded border px-2 py-1 text-sm"
+        />
+      );
+    }
+
+    return (
+      <span
+        className="cursor-pointer"
+        onClick={() => {
+          setEditing(key);
+          setValue(current || "");
+        }}
+      >
+        {formatDateUK(current)}
+      </span>
+    );
+  }
+
+  function editableCurrencyCell(
+    id: string,
+    current: string | null,
+    invoice: InvoiceRecord
+  ) {
+    const key = `${id}-currency`;
+
+    if (editing === key) {
+      return (
+        <select
+          autoFocus
+          value={value || ""}
+          onChange={(e) => setValue(e.target.value)}
+          onBlur={() => save(id, "currency", invoice)}
+          className="rounded border px-2 py-1 text-sm"
+        >
+          <option value="">Select</option>
+          <option value="GBP">GBP (£)</option>
+          <option value="EUR">EUR (€)</option>
+          <option value="USD">USD ($)</option>
+          <optgroup label="Other currencies">
+            {currencyOptions
+              .filter((c) => !["GBP", "EUR", "USD"].includes(c))
+              .sort()
+              .map((currency) => (
+                <option key={currency} value={currency}>
+                  {currency}
+                </option>
+              ))}
+          </optgroup>
+        </select>
+      );
+    }
+
+    return (
+      <span
+        className="cursor-pointer"
+        onClick={() => {
+          setEditing(key);
+          setValue(current || "");
+        }}
+      >
+        {current || "—"}
+      </span>
+    );
+  }
 
   return (
     <div className="max-h-[70vh] overflow-auto rounded-2xl border bg-white">
@@ -152,27 +418,42 @@ export function InvoiceTable({
                 </td>
 
                 <td className="border-b p-4 align-top">
-                  {invoice.supplier || "—"}
+                  {editableTextCell(invoice.id, "supplier", invoice.supplier, invoice)}
                 </td>
 
                 <td className="border-b p-4 whitespace-nowrap align-top">
-                  {invoice.invoice_number || "—"}
+                  {editableTextCell(
+                    invoice.id,
+                    "invoice_number",
+                    invoice.invoice_number,
+                    invoice
+                  )}
                 </td>
 
                 <td className="border-b p-4 whitespace-nowrap align-top">
-                  {formatDateUK(invoice.invoice_date)}
+                  {editableDateCell(
+                    invoice.id,
+                    "invoice_date",
+                    invoice.invoice_date,
+                    invoice
+                  )}
                 </td>
 
                 <td className="border-b p-4 whitespace-nowrap align-top">
-                  {formatDateUK(invoice.due_date)}
+                  {editableDateCell(
+                    invoice.id,
+                    "due_date",
+                    invoice.due_date,
+                    invoice
+                  )}
                 </td>
 
                 <td className="border-b p-4 whitespace-nowrap align-top">
-                  {invoice.currency || "—"}
+                  {editableCurrencyCell(invoice.id, invoice.currency, invoice)}
                 </td>
 
                 <td className="border-b p-4 whitespace-nowrap align-top">
-                  {formatMoney(invoice.total, invoice.currency)}
+                  {editableNumberCell(invoice.id, invoice.total, invoice)}
                 </td>
 
                 <td className="border-b p-4 align-top">
