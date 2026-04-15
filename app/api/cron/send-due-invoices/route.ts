@@ -22,14 +22,17 @@ export async function GET() {
 
     if (!invoices?.length) continue;
 
-    const list = invoices
+    const rows = invoices
       .map(
-        (inv) =>
-          `${inv.supplier || "Unknown"} - ${inv.total || ""} ${
-            inv.currency || ""
-          }`
+        (inv) => `
+        <tr>
+          <td>${inv.supplier || "-"}</td>
+          <td>${inv.invoice_number || "-"}</td>
+          <td>${inv.total || ""} ${inv.currency || ""}</td>
+        </tr>
+      `
       )
-      .join("<br>");
+      .join("");
 
     await resend.emails.send({
       from: "Invoices <onboarding@resend.dev>",
@@ -37,7 +40,14 @@ export async function GET() {
       subject: `Invoices due today (${invoices.length})`,
       html: `
         <h2>You have ${invoices.length} invoices due today</h2>
-        <p>${list}</p>
+        <table border="1" cellpadding="6" cellspacing="0">
+          <tr>
+            <th>Supplier</th>
+            <th>Invoice #</th>
+            <th>Amount</th>
+          </tr>
+          ${rows}
+        </table>
       `,
     });
   }
