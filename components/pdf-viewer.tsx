@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createClient } from "@/lib/supabase/browser";
 
 type Props = {
   invoiceId: string | null;
@@ -11,6 +12,7 @@ export function PdfViewer({ invoiceId, fileName }: Props) {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const supabase = createClient();
 
   useEffect(() => {
     async function loadPdf() {
@@ -25,16 +27,31 @@ export function PdfViewer({ invoiceId, fileName }: Props) {
       setPdfUrl(null);
 
       try {
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+
+        if (sessionError || !session?.access_token) {
+          throw new Error("You must be logged in to view PDFs.");
+        }
+
         const res = await fetch(
-          `/api/invoices/view?invoiceId=${encodeURIComponent(invoiceId)}`
+          `/api/invoices/view?invoiceId=${encodeURIComponent(invoiceId)}`,
+          {
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+            },
+          }
         );
+
         const body = await res.json();
 
         if (!res.ok) {
           throw new Error(body.error || "Could not load PDF");
         }
 
-        setPdfUrl(`${body.url}#zoom=135`);
+        setPdfUrl(`${body.url}#zoom=150`);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not load PDF");
       } finally {
@@ -43,7 +60,7 @@ export function PdfViewer({ invoiceId, fileName }: Props) {
     }
 
     loadPdf();
-  }, [invoiceId]);
+  }, [invoiceId, supabase]);
 
   return (
     <div className="rounded-2xl border bg-white">

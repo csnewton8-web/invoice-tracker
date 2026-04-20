@@ -1,499 +1,259 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { InvoiceRecord } from "@/types/invoice";
 
-function parseLocalDate(date: string | null) {
-  if (!date) return null;
+type Props = {
+  invoices: InvoiceRecord[];
+  selectedIds: string[];
+  selectedInvoiceId: string | null;
+  onToggleSelect: (id: string) => void;
+  onToggleSelectAll: () => void;
+  onViewInvoice: (id: string) => void;
+  payLinkUrl?: string;
+};
 
-  const parts = date.split("-");
-  if (parts.length !== 3) return new Date(date);
-
-  const [year, month, day] = parts.map(Number);
-  return new Date(year, month - 1, day);
-}
-
+// ✅ UK date format
 function formatDateUK(date: string | null) {
-  if (!date) return "—";
-  const d = parseLocalDate(date);
-  if (!d || Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("en-GB");
+  if (!date) return "-";
+
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return date;
+
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const year = d.getFullYear();
+
+  return `${day}-${month}-${year}`;
 }
 
-function formatMoney(total: number | null, currency: string | null) {
-  if (total == null) return "—";
-  return `${currency || ""} ${total}`;
-}
+// ✅ Base due status calculation (date only)
+function getDueInfo(date: string | null) {
+  if (!date) return { label: "-", status: "unknown" as const };
 
-function daysUntil(date: string | null) {
-  if (!date) return null;
+  const today = new Date();
+  const due = new Date(date);
 
-  const now = new Date();
-  const due = parseLocalDate(date);
-
-  if (!due || Number.isNaN(due.getTime())) return null;
-
-  now.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
   due.setHours(0, 0, 0, 0);
 
-  return Math.round((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  const diffDays = Math.round(
+    (due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+  );
+
+  if (diffDays < 0) {
+    return {
+      label: `Overdue by ${Math.abs(diffDays)} day${
+        Math.abs(diffDays) !== 1 ? "s" : ""
+      }`,
+      status: "overdue" as const,
+    };
+  }
+
+  if (diffDays === 0) {
+    return {
+      label: "Due today",
+      status: "due" as const,
+    };
+  }
+
+  return {
+    label: `Due in ${diffDays} day${diffDays !== 1 ? "s" : ""}`,
+    status: "future" as const,
+  };
 }
 
-function statusText(date: string | null) {
-  const d = daysUntil(date);
-  if (d === null) return "Unknown";
-  if (d < 0) return `Overdue by ${Math.abs(d)} days`;
-  return `Due in ${d} days`;
-}
+// ✅ Finance-aware display status
+function getDisplayStatus(invoice: InvoiceRecord) {
+  if (invoice.is_paid) {
+    return {
+      label: "Paid",
+      status: "paid" as const,
+    };
+  }
 
-const currencyOptions = [
-  "GBP",
-  "EUR",
-  "USD",
-  "AUD",
-  "CAD",
-  "CHF",
-  "CNY",
-  "DKK",
-  "HKD",
-  "INR",
-  "JPY",
-  "NOK",
-  "NZD",
-  "SEK",
-  "SGD",
-  "ZAR",
-];
+  return getDueInfo(invoice.due_date);
+}
 
 export function InvoiceTable({
   invoices,
-  onViewInvoice,
   selectedIds,
+  selectedInvoiceId,
   onToggleSelect,
   onToggleSelectAll,
+  onViewInvoice,
   payLinkUrl,
-  selectedInvoiceId,
-}: {
-  invoices: InvoiceRecord[];
-  onViewInvoice: (id: string) => void;
-  selectedIds: string[];
-  onToggleSelect: (id: string) => void;
-  onToggleSelectAll: () => void;
-  payLinkUrl: string;
-  selectedInvoiceId: string | null;
-}) {
-  const [editing, setEditing] = useState<string | null>(null);
-  const [value, setValue] = useState("");
-  const router = useRouter();
-
-  if (!invoices.length) {
-    return (
-      <div className="rounded-2xl border bg-white p-6 text-sm text-slate-600">
-        No invoices found.
-      </div>
-    );
-  }
-
+}: Props) {
   const allSelected =
     invoices.length > 0 &&
-    invoices.every((inv) => selectedIds.includes(inv.id));
-
-  async function save(
-    id: string,
-    field: string,
-    invoice: InvoiceRecord,
-    incomingValue?: string
-  ) {
-    let finalValue: string | number | null =
-      incomingValue !== undefined ? incomingValue : value;
-
-    if (field === "due_date" || field === "invoice_date") {
-      const newDate = parseLocalDate(String(finalValue));
-
-      const issueDate =
-        field === "invoice_date"
-          ? newDate
-          : parseLocalDate(invoice.invoice_date);
-
-      const dueDate =
-        field === "due_date"
-          ? newDate
-          : parseLocalDate(invoice.due_date);
-
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      if (field === "invoice_date" && newDate && newDate > today) {
-        setEditing(null);
-        setTimeout(() => {
-          alert("Invoice issue date cannot be in the future");
-        }, 0);
-        return;
-      }
-
-      if (issueDate && dueDate && dueDate < issueDate) {
-        setEditing(null);
-        setTimeout(() => {
-          alert("Due date cannot be earlier than invoice issue date");
-        }, 0);
-        return;
-      }
-    }
-
-    if (field === "total") {
-      finalValue =
-        String(finalValue).trim() === "" ? null : Number(finalValue);
-
-      if (finalValue !== null && Number.isNaN(finalValue)) {
-        alert("Please enter a valid number for Total.");
-        return;
-      }
-    }
-
-    if (field === "currency") {
-      finalValue = String(finalValue).trim().toUpperCase();
-    }
-
-    const res = await fetch("/api/invoices/update", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ id, field, value: finalValue }),
-    });
-
-    if (!res.ok) {
-      alert("Could not save your change.");
-      return;
-    }
-
-    setEditing(null);
-    router.refresh();
-  }
-
-  function editableTextCell(
-    id: string,
-    field: "supplier" | "invoice_number",
-    current: string | null,
-    invoice: InvoiceRecord
-  ) {
-    const key = `${id}-${field}`;
-
-    if (editing === key) {
-      return (
-        <input
-          autoFocus
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onBlur={() => save(id, field, invoice)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") save(id, field, invoice);
-            if (e.key === "Escape") setEditing(null);
-          }}
-          className="w-full rounded border px-2 py-1 text-sm"
-        />
-      );
-    }
-
-    return (
-      <span
-        className="cursor-pointer"
-        onClick={() => {
-          setEditing(key);
-          setValue(current ?? "");
-        }}
-      >
-        {current || "—"}
-      </span>
-    );
-  }
-
-  function editableNumberCell(
-    id: string,
-    current: number | null,
-    invoice: InvoiceRecord
-  ) {
-    const key = `${id}-total`;
-
-    if (editing === key) {
-      return (
-        <input
-          type="number"
-          step="0.01"
-          autoFocus
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onBlur={() => save(id, "total", invoice)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") save(id, "total", invoice);
-            if (e.key === "Escape") setEditing(null);
-          }}
-          className="w-full rounded border px-2 py-1 text-sm"
-        />
-      );
-    }
-
-    return (
-      <span
-        className="cursor-pointer"
-        onClick={() => {
-          setEditing(key);
-          setValue(current != null ? String(current) : "");
-        }}
-      >
-        {current != null ? String(current) : "—"}
-      </span>
-    );
-  }
-
-  function editableDateCell(
-    id: string,
-    field: "invoice_date" | "due_date",
-    current: string | null,
-    invoice: InvoiceRecord
-  ) {
-    const key = `${id}-${field}`;
-
-    if (editing === key) {
-      return (
-        <input
-          type="date"
-          autoFocus
-          value={current || ""}
-          onChange={(e) => {
-            const selectedDate = e.target.value;
-
-            const updatedInvoice: InvoiceRecord =
-              field === "invoice_date"
-                ? { ...invoice, invoice_date: selectedDate }
-                : { ...invoice, due_date: selectedDate };
-
-            save(id, field, updatedInvoice, selectedDate);
-          }}
-          onKeyDown={(e) => {
-            e.preventDefault();
-          }}
-          onPaste={(e) => e.preventDefault()}
-          className="rounded border px-2 py-1 text-sm"
-        />
-      );
-    }
-
-    return (
-      <span
-        className="cursor-pointer"
-        onClick={() => {
-          setEditing(key);
-          setValue(current || "");
-        }}
-      >
-        {formatDateUK(current)}
-      </span>
-    );
-  }
-
-  function editableCurrencyCell(
-    id: string,
-    current: string | null,
-    invoice: InvoiceRecord
-  ) {
-    const key = `${id}-currency`;
-
-    if (editing === key) {
-      return (
-        <select
-          autoFocus
-          value={value || ""}
-          onChange={(e) => setValue(e.target.value)}
-          onBlur={() => save(id, "currency", invoice)}
-          className="rounded border px-2 py-1 text-sm"
-        >
-          <option value="">Select</option>
-          <option value="GBP">GBP (£)</option>
-          <option value="EUR">EUR (€)</option>
-          <option value="USD">USD ($)</option>
-          <optgroup label="Other currencies">
-            {currencyOptions
-              .filter((c) => !["GBP", "EUR", "USD"].includes(c))
-              .sort()
-              .map((currency) => (
-                <option key={currency} value={currency}>
-                  {currency}
-                </option>
-              ))}
-          </optgroup>
-        </select>
-      );
-    }
-
-    return (
-      <span
-        className="cursor-pointer"
-        onClick={() => {
-          setEditing(key);
-          setValue(current || "");
-        }}
-      >
-        {current || "—"}
-      </span>
-    );
-  }
+    invoices.every((invoice) => selectedIds.includes(invoice.id));
 
   return (
-    <div className="max-h-[70vh] overflow-auto rounded-2xl border bg-white">
-      <table className="w-full border-separate border-spacing-0 text-sm">
-        <thead className="text-left">
-          <tr>
-            <th className="sticky top-0 z-20 border-b bg-slate-50 p-4">
-              <input
-                type="checkbox"
-                checked={allSelected}
-                onChange={onToggleSelectAll}
-              />
-            </th>
-            <th className="sticky top-0 z-20 border-b bg-slate-50 p-4 whitespace-nowrap">
-              File name
-            </th>
-            <th className="sticky top-0 z-20 border-b bg-slate-50 p-4 whitespace-nowrap">
-              Supplier
-            </th>
-            <th className="sticky top-0 z-20 border-b bg-slate-50 p-4 whitespace-nowrap">
-              Invoice #
-            </th>
-            <th className="sticky top-0 z-20 border-b bg-slate-50 p-4 whitespace-nowrap">
-              Invoice issue date
-            </th>
-            <th className="sticky top-0 z-20 border-b bg-slate-50 p-4 whitespace-nowrap">
-              Due date
-            </th>
-            <th className="sticky top-0 z-20 border-b bg-slate-50 p-4 whitespace-nowrap">
-              Currency
-            </th>
-            <th className="sticky top-0 z-20 border-b bg-slate-50 p-4 whitespace-nowrap">
-              Total
-            </th>
-            <th className="sticky top-0 z-20 border-b bg-slate-50 p-4 whitespace-nowrap">
-              Status
-            </th>
-            <th className="sticky top-0 z-20 border-b bg-slate-50 p-4 whitespace-nowrap">
-              Payment status
-            </th>
-            <th className="sticky top-0 z-20 border-b bg-slate-50 p-4 whitespace-nowrap">
-              Pay Link
-            </th>
-            <th className="sticky top-0 z-20 border-b bg-slate-50 p-4 whitespace-nowrap">
-              View
-            </th>
-          </tr>
-        </thead>
+    <div className="rounded-2xl border bg-white">
+      <div className="max-h-[520px] overflow-y-auto">
+        <table className="min-w-full text-xs">
+          <thead className="sticky top-0 z-10 border-b bg-slate-50 text-left font-semibold text-slate-600">
+            <tr>
+              <th className="w-[30px] px-2 py-1.5">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={onToggleSelectAll}
+                />
+              </th>
 
-        <tbody>
-          {invoices.map((invoice) => {
-            const isSelected = selectedIds.includes(invoice.id);
-            const isPaid = invoice.is_paid;
-            const isViewed = selectedInvoiceId === invoice.id;
+              <th className="max-w-[120px] px-2 py-1.5">File</th>
+              <th className="max-w-[120px] px-2 py-1.5">Supplier</th>
+              <th className="w-[90px] px-2 py-1.5">Inv #</th>
+              <th className="w-[90px] px-2 py-1.5">PO</th>
+              <th className="w-[90px] px-2 py-1.5">Issue</th>
+              <th className="w-[90px] px-2 py-1.5">Due</th>
+              <th className="w-[130px] px-2 py-1.5">Status</th>
+              <th className="w-[60px] px-2 py-1.5">Curr</th>
+              <th className="w-[80px] px-2 py-1.5 text-right">Total</th>
+              <th className="w-[80px] px-2 py-1.5">Payment</th>
+              <th className="w-[90px] px-2 py-1.5 text-right">Actions</th>
+            </tr>
+          </thead>
 
-            return (
-              <tr
-                key={invoice.id}
-                className={`${
-                  isViewed
-                    ? "bg-blue-50"
-                    : isPaid
-                    ? "bg-green-50"
-                    : "bg-orange-50"
-                }`}
-              >
-                <td className="border-b p-4 align-top">
-                  <input
-                    type="checkbox"
-                    checked={isSelected}
-                    onChange={() => onToggleSelect(invoice.id)}
-                  />
-                </td>
+          <tbody>
+            {invoices.map((invoice) => {
+              const isSelected = selectedIds.includes(invoice.id);
+              const isActive = invoice.id === selectedInvoiceId;
 
-                <td className="border-b p-4 whitespace-nowrap align-top">
-                  {invoice.file_name || "—"}
-                </td>
+              const displayStatus = getDisplayStatus(invoice);
+              const isOverdueUnpaid = displayStatus.status === "overdue";
+              const isPaid = !!invoice.is_paid;
 
-                <td className="border-b p-4 align-top">
-                  {editableTextCell(invoice.id, "supplier", invoice.supplier, invoice)}
-                </td>
+              return (
+                <tr
+                  key={invoice.id}
+                  className={`border-t ${
+                    isPaid
+                      ? "bg-green-50"
+                      : isOverdueUnpaid
+                      ? "bg-red-50"
+                      : "hover:bg-slate-50"
+                  } ${isActive ? "outline outline-2 outline-blue-400" : ""}`}
+                >
+                  <td className="px-2 py-1.5">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => onToggleSelect(invoice.id)}
+                    />
+                  </td>
 
-                <td className="border-b p-4 whitespace-nowrap align-top">
-                  {editableTextCell(
-                    invoice.id,
-                    "invoice_number",
-                    invoice.invoice_number,
-                    invoice
-                  )}
-                </td>
+                  <td className="max-w-[120px] truncate px-2 py-1.5">
+                    {invoice.file_name || "-"}
+                  </td>
 
-                <td className="border-b p-4 whitespace-nowrap align-top">
-                  {editableDateCell(
-                    invoice.id,
-                    "invoice_date",
-                    invoice.invoice_date,
-                    invoice
-                  )}
-                </td>
+                  <td className="max-w-[120px] truncate px-2 py-1.5">
+                    {invoice.supplier || "-"}
+                  </td>
 
-                <td className="border-b p-4 whitespace-nowrap align-top">
-                  {editableDateCell(
-                    invoice.id,
-                    "due_date",
-                    invoice.due_date,
-                    invoice
-                  )}
-                </td>
+                  <td className="px-2 py-1.5">
+                    {invoice.invoice_number || "-"}
+                  </td>
 
-                <td className="border-b p-4 whitespace-nowrap align-top">
-                  {editableCurrencyCell(invoice.id, invoice.currency, invoice)}
-                </td>
+                  <td className="px-2 py-1.5">
+                    {invoice.po_number || "-"}
+                  </td>
 
-                <td className="border-b p-4 whitespace-nowrap align-top">
-                  {editableNumberCell(invoice.id, invoice.total, invoice)}
-                </td>
+                  <td className="px-2 py-1.5">
+                    {formatDateUK(invoice.invoice_date)}
+                  </td>
 
-                <td className="border-b p-4 align-top">
-                  {statusText(invoice.due_date)}
-                </td>
+                  <td className="px-2 py-1.5">
+                    {formatDateUK(invoice.due_date)}
+                  </td>
 
-                <td className="border-b p-4 whitespace-nowrap align-top">
-                  {isPaid ? "Invoice paid" : "Not yet paid"}
-                </td>
+                  <td className="px-2 py-1.5">
+                    {displayStatus.status === "paid" && (
+                      <span className="rounded bg-green-100 px-1.5 py-0.5 text-[10px] text-green-700">
+                        {displayStatus.label}
+                      </span>
+                    )}
 
-                <td className="border-b p-4 whitespace-nowrap align-top">
-                  <button
-                    onClick={() => {
-                      if (!payLinkUrl) {
-                        alert("No payment link configured.");
-                        return;
-                      }
-                      window.open(payLinkUrl, "_blank", "noopener,noreferrer");
-                    }}
-                    className="rounded-lg border px-3 py-1 text-sm hover:bg-slate-100"
-                  >
-                    Go Pay!
-                  </button>
-                </td>
+                    {displayStatus.status === "overdue" && (
+                      <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] text-red-700">
+                        {displayStatus.label}
+                      </span>
+                    )}
 
-                <td className="border-b p-4 whitespace-nowrap align-top">
-                  <button
-                    onClick={() => onViewInvoice(invoice.id)}
-                    className={`rounded-lg border px-3 py-1 text-sm ${
-                      isViewed ? "bg-blue-500 text-white" : "hover:bg-slate-100"
-                    }`}
-                  >
-                    View
-                  </button>
+                    {displayStatus.status === "due" && (
+                      <span className="rounded bg-yellow-100 px-1.5 py-0.5 text-[10px] text-yellow-700">
+                        {displayStatus.label}
+                      </span>
+                    )}
+
+                    {displayStatus.status === "future" && (
+                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-700">
+                        {displayStatus.label}
+                      </span>
+                    )}
+
+                    {displayStatus.status === "unknown" && "-"}
+                  </td>
+
+                  <td className="px-2 py-1.5">
+                    {invoice.currency || "-"}
+                  </td>
+
+                  <td className="px-2 py-1.5 text-right">
+                    {invoice.total != null ? invoice.total.toFixed(2) : "-"}
+                  </td>
+
+                  <td className="px-2 py-1.5">
+                    {invoice.is_paid ? (
+                      <span className="rounded bg-green-100 px-1.5 py-0.5 text-[10px] text-green-700">
+                        Paid
+                      </span>
+                    ) : (
+                      <span className="rounded bg-orange-100 px-1.5 py-0.5 text-[10px] text-orange-700">
+                        Unpaid
+                      </span>
+                    )}
+                  </td>
+
+                  <td className="px-2 py-1.5 text-right">
+                    <div className="flex justify-end gap-1">
+                      <button
+                        type="button"
+                        onClick={() => onViewInvoice(invoice.id)}
+                        className="rounded border px-2 py-0.5 text-[10px] hover:bg-slate-100"
+                      >
+                        View
+                      </button>
+
+                      {payLinkUrl && (
+                        <a
+                          href={payLinkUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="rounded border px-2 py-0.5 text-[10px] hover:bg-slate-100"
+                        >
+                          Pay
+                        </a>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+
+            {invoices.length === 0 && (
+              <tr>
+                <td
+                  colSpan={12}
+                  className="px-3 py-6 text-center text-slate-500"
+                >
+                  No invoices found
                 </td>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

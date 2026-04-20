@@ -1,35 +1,51 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { requireCurrentCompany } from "@/lib/current-company";
 
 export async function POST(req: NextRequest) {
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-
-  if (!userData.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   try {
+    const { supabase, companyId } = await requireCurrentCompany(req);
     const body = await req.json();
 
-    const { id, field, value } = body;
+    const id = body.id;
 
-    if (!id || !field) {
-      return NextResponse.json({ error: "Missing data" }, { status: 400 });
+    const allowedFields = [
+      "supplier",
+      "invoice_number",
+      "po_number",
+      "invoice_date",
+      "due_date",
+      "payment_terms",
+      "total",
+      "currency",
+      "notes",
+      "is_paid",
+    ];
+
+    const updateData: Record<string, any> = {
+      updated_at: new Date().toISOString(),
+    };
+
+    for (const field of allowedFields) {
+      if (field in body) {
+        updateData[field] = body[field];
+      }
     }
 
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("invoices")
-      .update({ [field]: value })
+      .update(updateData)
       .eq("id", id)
-      .eq("user_id", userData.user.id);
+      .eq("company_id", companyId)
+      .select()
+      .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      throw error;
     }
 
-    return NextResponse.json({ success: true });
-  } catch {
-    return NextResponse.json({ error: "Update failed" }, { status: 500 });
+    return NextResponse.json({ success: true, invoice: data });
+  } catch (e: any) {
+    console.error("Invoice update error:", e);
+    return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }

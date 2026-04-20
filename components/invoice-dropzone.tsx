@@ -1,14 +1,18 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/browser";
 
-export function InvoiceDropzone() {
+type Props = {
+  onUploaded?: () => Promise<void> | void;
+};
+
+export function InvoiceDropzone({ onUploaded }: Props) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [dragActive, setDragActive] = useState(false);
-  const router = useRouter();
+  const supabase = createClient();
 
   async function uploadFiles(fileList: FileList | null) {
     if (!fileList?.length) return;
@@ -28,12 +32,24 @@ export function InvoiceDropzone() {
     setMessage("");
 
     try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        throw new Error("You must be logged in to upload invoices.");
+      }
+
       for (const file of pdfFiles) {
         const formData = new FormData();
         formData.append("file", file);
 
         const res = await fetch("/api/invoices/create", {
           method: "POST",
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
           body: formData,
         });
 
@@ -44,8 +60,15 @@ export function InvoiceDropzone() {
         }
       }
 
+      if (onUploaded) {
+        await onUploaded();
+      }
+
+      if (inputRef.current) {
+        inputRef.current.value = "";
+      }
+
       setMessage("Upload complete");
-      router.refresh();
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "Upload failed");
     } finally {
@@ -73,8 +96,7 @@ export function InvoiceDropzone() {
 
     if (loading) return;
 
-    const files = e.dataTransfer.files;
-    uploadFiles(files);
+    uploadFiles(e.dataTransfer.files);
   }
 
   return (

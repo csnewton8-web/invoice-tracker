@@ -1,48 +1,84 @@
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
 import { InvoiceDropzone } from "@/components/invoice-dropzone";
 import { InvoiceWorkspace } from "@/components/invoice-workspace";
 import { InvoiceRecord } from "@/types/invoice";
+import { createClient } from "@/lib/supabase/browser";
 
-export default async function InvoicesPage() {
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
+export default function InvoicesPage() {
+  const supabase = createClient();
+  const [invoices, setInvoices] = useState<InvoiceRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  if (!userData.user) {
-    redirect("/auth");
-  }
+  const loadInvoices = useCallback(async () => {
+    setLoading(true);
+    setError("");
 
-  const { data: invoices } = await supabase
-    .from("invoices")
-    .select("*")
-    .eq("user_id", userData.user.id)
-    .order("created_at", { ascending: false });
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.access_token) {
+        window.location.href = "/login";
+        return;
+      }
+
+      const res = await fetch("/api/invoices/list", {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        cache: "no-store",
+      });
+
+      const body = await res.json();
+
+      if (!res.ok) {
+        throw new Error(body.error || "Failed to load invoices");
+      }
+
+      setInvoices(body.invoices || []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load invoices");
+    } finally {
+      setLoading(false);
+    }
+  }, [supabase]);
+
+  useEffect(() => {
+    loadInvoices();
+  }, [loadInvoices]);
 
   return (
-    <main className="min-h-screen bg-slate-50 p-6">
+    <main className="min-h-screen bg-neutral-800 p-6">
       <div className="mx-auto max-w-[1600px] space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-semibold">Supplier invoice tracker</h1>
-            <p className="mt-2 text-slate-600">
-              Signed in as {userData.user.email}
-            </p>
-          </div>
-
-          <form action="/auth/signout" method="post">
-            <button className="rounded-xl border bg-white px-4 py-2">
-              Sign out
-            </button>
-          </form>
+        <div>
+          <h1 className="text-3xl font-semibold text-slate-100">
+            Supplier invoice tracker
+          </h1>
+          <p className="mt-2 text-slate-400">Signed-in user view</p>
         </div>
 
-        <InvoiceDropzone />
+        <InvoiceDropzone onUploaded={loadInvoices} />
 
+        {loading && (
+          <div className="rounded-2xl border bg-white p-6 text-sm text-slate-600">
+            Loading invoices...
+          </div>
+        )}
 
+        {error && !loading && (
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm text-red-700">
+            {error}
+          </div>
+        )}
 
-        <InvoiceWorkspace invoices={(invoices || []) as InvoiceRecord[]} />
-
-
+        {!loading && !error && (
+          <InvoiceWorkspace invoices={invoices as InvoiceRecord[]} />
+        )}
       </div>
     </main>
   );

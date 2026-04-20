@@ -1,108 +1,164 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createClient } from "@/lib/supabase/browser";
 
 type Props = {
-  onSaved?: (url: string) => void;
+  onSaved?: (payLinkUrl: string) => void;
 };
 
 export function PayLinkSettings({ onSaved }: Props) {
+  const supabase = createClient();
+
   const [payLinkUrl, setPayLinkUrl] = useState("");
-  const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
-  useEffect(() => {
-    async function loadSettings() {
-      try {
-        const res = await fetch("/api/settings/pay-link");
-        const text = await res.text();
+  async function getAccessToken() {
+    const {
+      data: { session },
+      error,
+    } = await supabase.auth.getSession();
 
-        let body: any = {};
-        try {
-          body = text ? JSON.parse(text) : {};
-        } catch {
-          throw new Error("Could not load payment link settings.");
-        }
-
-        if (!res.ok) {
-          throw new Error(body.error || "Could not load settings");
-        }
-
-        setPayLinkUrl(body.pay_link_url || "");
-      } catch (e) {
-        setMessage(e instanceof Error ? e.message : "Could not load settings");
-      } finally {
-        setLoading(false);
-      }
+    if (error || !session?.access_token) {
+      throw new Error("You must be logged in.");
     }
 
-    loadSettings();
+    return session.access_token;
+  }
+
+  async function loadPayLink() {
+    try {
+      setLoading(true);
+      setError("");
+
+      const token = await getAccessToken();
+
+      const res = await fetch("/api/settings/pay-link", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const contentType = res.headers.get("content-type") || "";
+      const body = contentType.includes("application/json")
+        ? await res.json()
+        : { error: await res.text() };
+
+      if (!res.ok) {
+        throw new Error(body.error || "Failed to load payment link");
+      }
+
+      const url = body.pay_link_url || "";
+      setPayLinkUrl(url);
+      onSaved?.(url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load payment link");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadPayLink();
   }, []);
 
-  async function saveSettings() {
-    setSaving(true);
-    setMessage("");
+  async function savePayLink(e: React.FormEvent) {
+    e.preventDefault();
 
     try {
+      setSaving(true);
+      setError("");
+      setSuccess("");
+
+      const token = await getAccessToken();
+
       const res = await fetch("/api/settings/pay-link", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ payLinkUrl }),
+        body: JSON.stringify({
+          payLinkUrl,
+        }),
       });
 
-      const text = await res.text();
-
-      let body: any = {};
-      try {
-        body = text ? JSON.parse(text) : {};
-      } catch {
-        throw new Error("Could not save payment link settings.");
-      }
+      const contentType = res.headers.get("content-type") || "";
+      const body = contentType.includes("application/json")
+        ? await res.json()
+        : { error: await res.text() };
 
       if (!res.ok) {
-        throw new Error(body.error || "Could not save settings");
+        throw new Error(body.error || "Failed to save payment link");
       }
 
-      setMessage("Pay link saved");
+      setSuccess("Payment link saved");
       onSaved?.(payLinkUrl);
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : "Could not save settings");
+      setError(e instanceof Error ? e.message : "Failed to save payment link");
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <div className="rounded-2xl border bg-white p-5">
-      <h2 className="text-lg font-semibold">Payment link settings</h2>
-      <p className="mt-1 text-sm text-slate-600">
-        Set the URL that opens when you click <strong>Go Pay!</strong> on an invoice.
-      </p>
-
-      <div className="mt-4 flex flex-col gap-3 md:flex-row">
-        <input
-          type="url"
-          placeholder="https://your-payment-page.com"
-          value={payLinkUrl}
-          onChange={(e) => setPayLinkUrl(e.target.value)}
-          disabled={loading}
-          className="w-full rounded-xl border px-4 py-3 text-sm"
-        />
-
-        <button
-          type="button"
-          onClick={saveSettings}
-          disabled={saving || loading}
-          className="rounded-xl bg-slate-900 px-5 py-3 text-white"
-        >
-          {saving ? "Saving..." : "Save"}
-        </button>
+    <div className="rounded-2xl border bg-white p-4">
+      <div className="mb-4">
+        <h2 className="text-lg font-semibold">Payment link settings</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Add the payment page or portal link that appears against invoices in
+          the table.
+        </p>
       </div>
 
-      {message && <p className="mt-3 text-sm text-slate-600">{message}</p>}
+      {loading ? (
+        <div className="rounded-xl border border-dashed px-4 py-6 text-sm text-slate-500">
+          Loading payment link settings...
+        </div>
+      ) : (
+        <form onSubmit={savePayLink} className="space-y-4">
+          <div>
+            <label className="mb-2 block text-sm font-medium text-slate-700">
+              Payment link URL
+            </label>
+            <input
+              type="url"
+              value={payLinkUrl}
+              onChange={(e) => setPayLinkUrl(e.target.value)}
+              placeholder="https://your-payment-portal.com/pay"
+              className="w-full rounded-xl border px-3 py-2 text-sm"
+            />
+          </div>
+
+          {(error || success) && (
+            <div className="space-y-2">
+              {error && (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 whitespace-pre-wrap">
+                  {error}
+                </div>
+              )}
+              {success && (
+                <div className="rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+                  {success}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              disabled={saving}
+              className="rounded-xl border bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-800 disabled:opacity-50"
+            >
+              {saving ? "Saving..." : "Save payment link"}
+            </button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }

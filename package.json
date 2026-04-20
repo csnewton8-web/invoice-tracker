@@ -9,23 +9,25 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@supabase/auth-helpers-nextjs": "^0.15.0",
     "@supabase/ssr": "^0.0.10",
-    "@supabase/supabase-js": "^2.39.0",
+    "@supabase/supabase-js": "^2.103.3",
     "@tailwindcss/postcss": "^4.2.2",
     "autoprefixer": "^10.5.0",
     "next": "16.2.3",
     "openai": "^4.52.0",
+    "pdf-parse": "^2.4.5",
     "postcss": "^8.5.9",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "resend": "^3.2.0",
+    "resend": "^3.5.0",
     "tailwindcss": "^4.2.2"
   },
   "devDependencies": {
     "@types/node": "^20.11.30",
     "@types/react": "^18.2.74",
     "@types/react-dom": "^18.2.24",
-    "eslint": "^8.57.0",
+    "eslint": "^9.39.4",
     "eslint-config-next": "16.2.3",
     "typescript": "^5.4.5"
   }

@@ -1,23 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
+import { requireCurrentCompany } from "@/lib/current-company";
 
-function getAdmin() {
-  return createAdminClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
-  const supabase = await createClient();
-  const { data: userData } = await supabase.auth.getUser();
-
-  if (!userData.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   try {
+    const { supabase, companyId } = await requireCurrentCompany(req);
+
     const body = await req.json();
     const invoiceIds: string[] = Array.isArray(body.invoiceIds) ? body.invoiceIds : [];
 
@@ -28,7 +18,7 @@ export async function POST(req: NextRequest) {
     const { data: invoices, error: fetchError } = await supabase
       .from("invoices")
       .select("id, file_path")
-      .eq("user_id", userData.user.id)
+      .eq("company_id", companyId)
       .in("id", invoiceIds);
 
     if (fetchError) {
@@ -39,11 +29,10 @@ export async function POST(req: NextRequest) {
       .map((invoice) => invoice.file_path)
       .filter(Boolean);
 
-    const admin = getAdmin();
     const bucket = process.env.INVOICE_STORAGE_BUCKET || "invoices";
 
     if (filePaths.length > 0) {
-      const { error: storageError } = await admin.storage
+      const { error: storageError } = await supabase.storage
         .from(bucket)
         .remove(filePaths);
 
@@ -55,7 +44,7 @@ export async function POST(req: NextRequest) {
     const { error: deleteError } = await supabase
       .from("invoices")
       .delete()
-      .eq("user_id", userData.user.id)
+      .eq("company_id", companyId)
       .in("id", invoiceIds);
 
     if (deleteError) {
@@ -63,7 +52,10 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ success: true });
-  } catch {
-    return NextResponse.json({ error: "Delete failed" }, { status: 500 });
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: error?.message || "Delete failed" },
+      { status: 500 }
+    );
   }
 }

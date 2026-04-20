@@ -1,10 +1,4 @@
 import "./globals.css";
-import type { Metadata } from "next";
-
-export const metadata: Metadata = {
-  title: "Invoice Due-Date Tracker",
-  description: "Upload supplier invoices and detect payment due dates",
-};
 
 export default function RootLayout({
   children,
@@ -13,7 +7,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className="bg-gradient-to-br from-neutral-900 to-neutral-800 text-slate-100 min-h-screen">
+        {children}
+      </body>
     </html>
   );
 }

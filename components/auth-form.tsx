@@ -1,78 +1,143 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/browser";
-import { useRouter } from "next/navigation";
 
 export function AuthForm() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [mode, setMode] = useState<"login" | "signup">("login");
-  const [error, setError] = useState("");
+  const supabase = createClient();
+
+  const emailRef = useRef<HTMLInputElement | null>(null);
+  const passwordRef = useRef<HTMLInputElement | null>(null);
+
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
+  const [message, setMessage] = useState("");
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  function getCredentials() {
+    const email = emailRef.current?.value.trim() || "";
+    const password = passwordRef.current?.value || "";
+    return { email, password };
+  }
+
+  async function signIn() {
     setLoading(true);
-    setError("");
+    setMessage("");
 
-    const supabase = createClient();
+    try {
+      const { email, password } = getCredentials();
 
-    const result =
-      mode === "login"
-        ? await supabase.auth.signInWithPassword({ email, password })
-        : await supabase.auth.signUp({ email, password });
+      if (!email || !password) {
+        setMessage("Please enter both email and password.");
+        return;
+      }
 
-    if (result.error) {
-      setError(result.error.message);
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      console.log("SIGN IN RESULT:", { data, error });
+
+      if (error) {
+        setMessage(error.message);
+        return;
+      }
+
+      if (!data.session) {
+        setMessage("Login succeeded but no session was returned.");
+        return;
+      }
+
+      setMessage("Login successful. Redirecting...");
+      window.location.assign("/invoices");
+    } catch (err) {
+      console.error("SIGN IN CRASH:", err);
+      setMessage("Unexpected sign-in error.");
+    } finally {
       setLoading(false);
-      return;
     }
+  }
 
-    router.push("/invoices");
-    router.refresh();
-    setLoading(false);
+  async function signUp() {
+    setLoading(true);
+    setMessage("");
+
+    try {
+      const { email, password } = getCredentials();
+
+      if (!email || !password) {
+        setMessage("Please enter both email and password.");
+        return;
+      }
+
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+
+      console.log("SIGN UP RESULT:", { data, error });
+
+      if (error) {
+        setMessage(error.message);
+        return;
+      }
+
+      if (data.user && !data.session) {
+        setMessage("Account created. Check your email if confirmation is required.");
+        return;
+      }
+
+      setMessage("Account created successfully. You can now sign in.");
+    } catch (err) {
+      console.error("SIGN UP CRASH:", err);
+      setMessage("Unexpected sign-up error.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 rounded-2xl bg-white p-8 shadow-sm">
-      <div>
-        <h1 className="text-2xl font-semibold">Invoice tracker</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Sign in to upload and track supplier invoices.
-        </p>
+    <div className="w-full max-w-md rounded-2xl border bg-white p-6 shadow-sm">
+      <div className="space-y-4">
+        <input
+          ref={emailRef}
+          type="email"
+          name="email"
+          placeholder="Email"
+          autoComplete="email"
+          className="w-full rounded-xl border px-4 py-3"
+        />
+
+        <input
+          ref={passwordRef}
+          type="password"
+          name="password"
+          placeholder="Password"
+          autoComplete="current-password"
+          className="w-full rounded-xl border px-4 py-3"
+        />
+
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={signIn}
+            disabled={loading}
+            className="rounded-xl bg-slate-900 px-5 py-3 text-white disabled:opacity-50"
+          >
+            {loading ? "Working..." : "Sign in"}
+          </button>
+
+          <button
+            type="button"
+            onClick={signUp}
+            disabled={loading}
+            className="rounded-xl border px-5 py-3 disabled:opacity-50"
+          >
+            Sign up
+          </button>
+        </div>
+
+        {message && <p className="text-sm text-slate-600">{message}</p>}
       </div>
-
-      <input
-        className="w-full rounded-xl border px-4 py-3"
-        type="email"
-        placeholder="Email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-      />
-
-      <input
-        className="w-full rounded-xl border px-4 py-3"
-        type="password"
-        placeholder="Password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-      />
-
-      {error && <p className="text-sm text-red-600">{error}</p>}
-
-      <button className="w-full rounded-xl bg-slate-900 px-4 py-3 text-white" disabled={loading}>
-        {loading ? "Please wait..." : mode === "login" ? "Sign in" : "Create account"}
-      </button>
-
-      <button
-        type="button"
-        className="w-full text-sm text-slate-600"
-        onClick={() => setMode(mode === "login" ? "signup" : "login")}
-      >
-        {mode === "login" ? "Need an account? Sign up" : "Already have an account? Sign in"}
-      </button>
-    </form>
+    </div>
   );
 }
