@@ -12,8 +12,7 @@ type Props = {
   payLinkUrl?: string;
 };
 
-// ✅ UK date format
-function formatDateUK(date: string | null) {
+function formatDateUK(date?: string | null) {
   if (!date) return "-";
 
   const d = new Date(date);
@@ -26,8 +25,7 @@ function formatDateUK(date: string | null) {
   return `${day}-${month}-${year}`;
 }
 
-// ✅ Base due status calculation (date only)
-function getDueInfo(date: string | null) {
+function getDueInfo(date?: string | null) {
   if (!date) return { label: "-", status: "unknown" as const };
 
   const today = new Date();
@@ -62,7 +60,6 @@ function getDueInfo(date: string | null) {
   };
 }
 
-// ✅ Finance-aware display status
 function getDisplayStatus(invoice: InvoiceRecord) {
   if (invoice.is_paid) {
     return {
@@ -71,7 +68,7 @@ function getDisplayStatus(invoice: InvoiceRecord) {
     };
   }
 
-  return getDueInfo(invoice.due_date);
+  return getDueInfo(invoice.due_date ?? null);
 }
 
 export function InvoiceTable({
@@ -100,7 +97,6 @@ export function InvoiceTable({
                   onChange={onToggleSelectAll}
                 />
               </th>
-
               <th className="max-w-[120px] px-2 py-1.5">File</th>
               <th className="max-w-[120px] px-2 py-1.5">Supplier</th>
               <th className="w-[90px] px-2 py-1.5">Inv #</th>
