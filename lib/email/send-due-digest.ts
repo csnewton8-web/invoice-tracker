@@ -279,8 +279,8 @@ export async function sendDueDigest({
             <img
   src="https://invoice-tracker-lake-nine.vercel.app/logo/flashfox-logo.png"
   alt="FlashFox - Fast. Smart. On Time."
-  width="420"
-  style="display:block;margin:0 0 24px;max-width:420px;width:100%;height:auto;"
+  width="180"
+  style="display:block;margin:0 0 18px;max-width:180px;height:auto;"
 />
 
             <h1 style="font-size:28px;line-height:1.2;margin:0 0 10px;color:#ffffff;">
