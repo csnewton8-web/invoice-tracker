@@ -276,12 +276,27 @@ export async function sendDueDigest({
       <div style="font-family:Arial,Helvetica,sans-serif;max-width:760px;margin:0 auto;padding:28px 18px;color:#0f172a;">
         <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:22px;overflow:hidden;">
           <div style="padding:26px 28px;background:#0f172a;color:#ffffff;">
-            <img
-  src="https://invoice-tracker-lake-nine.vercel.app/logo/flashfox-logo.png"
-  alt="FlashFox - Fast. Smart. On Time."
-  width="180"
-  style="display:block;margin:0 0 18px;max-width:180px;height:auto;"
-/>
+            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 20px;">
+  <tr>
+    <td style="vertical-align:middle;padding-right:14px;">
+      <img
+        src="https://invoice-tracker-lake-nine.vercel.app/logo/flashfox-icon.png"
+        alt="FlashFox"
+        width="68"
+        height="68"
+        style="display:block;width:68px;height:68px;"
+      />
+    </td>
+    <td style="vertical-align:middle;">
+      <div style="font-size:32px;font-weight:900;line-height:1;color:#ffffff;">
+        Flash<span style="color:#60a5fa;">Fox</span>
+      </div>
+      <div style="font-size:12px;font-weight:700;letter-spacing:0.18em;color:#fb923c;text-transform:uppercase;margin-top:8px;">
+        Fast. Smart. On Time.
+      </div>
+    </td>
+  </tr>
+</table>
 
             <h1 style="font-size:28px;line-height:1.2;margin:0 0 10px;color:#ffffff;">
               Invoice payment digest
