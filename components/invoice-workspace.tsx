@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { useSearchParams } from "next/navigation";
 import { InvoiceRecord } from "@/types/invoice";
 import { InvoiceTable } from "@/components/invoice-table";
 import { PdfViewer } from "@/components/pdf-viewer";
@@ -178,6 +185,7 @@ export function InvoiceWorkspace({
 }: Props) {
   const selectedPanelRef = useRef<HTMLDivElement | null>(null);
   const supabase = useMemo(() => createClient(), []);
+  const searchParams = useSearchParams();
 
   const [invoices, setInvoices] = useState(initialInvoices);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(
@@ -242,6 +250,30 @@ export function InvoiceWorkspace({
     setInvoices(initialInvoices);
     loadPayLink();
   }, [initialInvoices, loadPayLink]);
+
+  useEffect(() => {
+    const invoiceId = searchParams.get("invoiceId");
+
+    if (!invoiceId || !initialInvoices.length) {
+      return;
+    }
+
+    const invoice = initialInvoices.find((inv) => inv.id === invoiceId);
+
+    if (!invoice) {
+      return;
+    }
+
+    setInvoiceViewTab("all");
+    setSelectedInvoiceId(invoiceId);
+
+    setTimeout(() => {
+      selectedPanelRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 500);
+  }, [searchParams, initialInvoices]);
 
   function pushToast(toast: Omit<ToastState, "id">) {
     const id = Date.now() + Math.floor(Math.random() * 1000);

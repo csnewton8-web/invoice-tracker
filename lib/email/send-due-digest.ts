@@ -70,7 +70,11 @@ function dueLabel(value: string | null) {
   const days = daysUntilDue(value);
 
   if (days == null) return "Due date unavailable";
-  if (days < 0) return `Overdue by ${Math.abs(days)} day${Math.abs(days) === 1 ? "" : "s"}`;
+  if (days < 0) {
+    return `Overdue by ${Math.abs(days)} day${
+      Math.abs(days) === 1 ? "" : "s"
+    }`;
+  }
   if (days === 0) return "Due today";
   if (days === 1) return "Due tomorrow";
 
@@ -98,14 +102,20 @@ function getViewUrl(item: InvoiceDigestItem) {
 
   if (!appBaseUrl || !invoiceId) return null;
 
-  return `${appBaseUrl}/invoices/${encodeURIComponent(invoiceId)}`;
+  return `${appBaseUrl}/invoices?invoiceId=${encodeURIComponent(
+    invoiceId
+  )}#invoice-review`;
 }
 
 function totalValue(items: InvoiceDigestItem[]) {
   return items.reduce((sum, item) => sum + (Number(item.total) || 0), 0);
 }
 
-function buttonHtml(label: string, href: string, variant: "primary" | "secondary") {
+function buttonHtml(
+  label: string,
+  href: string,
+  variant: "primary" | "secondary"
+) {
   const background = variant === "primary" ? "#2563eb" : "#0f172a";
 
   return `
@@ -247,8 +257,8 @@ export async function sendDueDigest({
 
   const safeCompanyName = escapeHtml(companyName);
   const subject = `Invoice payment digest for ${companyName}`;
- const appBaseUrl = getAppBaseUrl();
-const dashboardUrl = appBaseUrl ? `${appBaseUrl}/dashboard` : null;
+  const appBaseUrl = getAppBaseUrl();
+  const dashboardUrl = appBaseUrl ? `${appBaseUrl}/dashboard` : null;
 
   const allItems = [
     ...overdue,
@@ -267,8 +277,8 @@ const dashboardUrl = appBaseUrl ? `${appBaseUrl}/dashboard` : null;
         <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:22px;overflow:hidden;">
           <div style="padding:26px 28px;background:#0f172a;color:#ffffff;">
             <div style="font-size:28px;font-weight:900;letter-spacing:-0.04em;margin-bottom:22px;color:#ffffff;">
-  Flash<span style="color:#60a5fa;">Fox</span>
-</div>
+              Flash<span style="color:#60a5fa;">Fox</span>
+            </div>
 
             <h1 style="font-size:28px;line-height:1.2;margin:0 0 10px;color:#ffffff;">
               Invoice payment digest
@@ -286,21 +296,27 @@ const dashboardUrl = appBaseUrl ? `${appBaseUrl}/dashboard` : null;
                   <div style="background:#fee2e2;border-radius:14px;padding:14px;text-align:center;">
                     <div style="font-size:24px;font-weight:900;color:#991b1b;">${overdue.length}</div>
                     <div style="font-size:12px;font-weight:800;color:#991b1b;text-transform:uppercase;letter-spacing:.04em;">Overdue</div>
-                    <div style="font-size:12px;color:#991b1b;margin-top:4px;">${escapeHtml(formatMoney(summaryCurrency, totalValue(overdue)))}</div>
+                    <div style="font-size:12px;color:#991b1b;margin-top:4px;">${escapeHtml(
+                      formatMoney(summaryCurrency, totalValue(overdue))
+                    )}</div>
                   </div>
                 </td>
                 <td style="width:33.33%;padding:8px;">
                   <div style="background:#fef3c7;border-radius:14px;padding:14px;text-align:center;">
                     <div style="font-size:24px;font-weight:900;color:#92400e;">${dueToday.length}</div>
                     <div style="font-size:12px;font-weight:800;color:#92400e;text-transform:uppercase;letter-spacing:.04em;">Due today</div>
-                    <div style="font-size:12px;color:#92400e;margin-top:4px;">${escapeHtml(formatMoney(summaryCurrency, totalValue(dueToday)))}</div>
+                    <div style="font-size:12px;color:#92400e;margin-top:4px;">${escapeHtml(
+                      formatMoney(summaryCurrency, totalValue(dueToday))
+                    )}</div>
                   </div>
                 </td>
                 <td style="width:33.33%;padding:8px;">
                   <div style="background:#dbeafe;border-radius:14px;padding:14px;text-align:center;">
                     <div style="font-size:24px;font-weight:900;color:#1e40af;">${thisWeekItems.length}</div>
                     <div style="font-size:12px;font-weight:800;color:#1e40af;text-transform:uppercase;letter-spacing:.04em;">Due this week</div>
-                    <div style="font-size:12px;color:#1e40af;margin-top:4px;">${escapeHtml(formatMoney(summaryCurrency, totalValue(thisWeekItems)))}</div>
+                    <div style="font-size:12px;color:#1e40af;margin-top:4px;">${escapeHtml(
+                      formatMoney(summaryCurrency, totalValue(thisWeekItems))
+                    )}</div>
                   </div>
                 </td>
               </tr>
