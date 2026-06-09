@@ -276,21 +276,12 @@ export async function sendDueDigest({
       <div style="font-family:Arial,Helvetica,sans-serif;max-width:760px;margin:0 auto;padding:28px 18px;color:#0f172a;">
         <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:22px;overflow:hidden;">
           <div style="padding:26px 28px;background:#0f172a;color:#ffffff;">
-            ${
-  appBaseUrl
-    ? `<img
-        src="${escapeHtml(`${appBaseUrl}/logo/flashfox-logo.png`)}"
-        alt="FlashFox - Fast. Smart. On Time."
-        width="420"
-        style="display:block;margin:0 0 24px;max-width:420px;width:100%;height:auto;"
-      />`
-    : `<div style="font-size:28px;font-weight:900;letter-spacing:-0.04em;margin-bottom:6px;color:#ffffff;">
-        Flash<span style="color:#60a5fa;">Fox</span>
-      </div>
-      <div style="font-size:13px;font-weight:800;letter-spacing:0.22em;color:#fb923c;text-transform:uppercase;margin-bottom:22px;">
-        Fast. Smart. On Time.
-      </div>`
-}
+            <img
+  src="https://invoice-tracker-lake-nine.vercel.app/logo/flashfox-logo.png"
+  alt="FlashFox - Fast. Smart. On Time."
+  width="420"
+  style="display:block;margin:0 0 24px;max-width:420px;width:100%;height:auto;"
+/>
 
             <h1 style="font-size:28px;line-height:1.2;margin:0 0 10px;color:#ffffff;">
               Invoice payment digest
