@@ -35,7 +35,9 @@ export default function SettingsPage() {
   const [company, setCompany] = useState<CompanySettings | null>(null);
   const [name, setName] = useState("");
   const [billingEmail, setBillingEmail] = useState("");
-  const [forwardingSenders, setForwardingSenders] = useState<ForwardingSender[]>([]);
+  const [forwardingSenders, setForwardingSenders] = useState<
+    ForwardingSender[]
+  >([]);
   const [newForwardingEmail, setNewForwardingEmail] = useState("");
 
   const [loading, setLoading] = useState(true);
@@ -270,8 +272,8 @@ export default function SettingsPage() {
               </h1>
 
               <p className="mt-2 text-sm text-slate-400">
-                Manage your FlashFox workspace identity, billing contact, team access,
-                and invoice forwarding.
+                Manage your FlashFox workspace identity, billing contact, team
+                access, and invoice forwarding.
               </p>
             </div>
 
@@ -282,38 +284,6 @@ export default function SettingsPage() {
               Back to workspace
             </Link>
           </div>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-3">
-          <Link
-            href="/settings/team"
-            className="rounded-2xl border border-slate-800 bg-slate-900 p-5 transition hover:border-slate-700 hover:bg-slate-800"
-          >
-            <div className="text-sm font-medium text-white">Team settings</div>
-            <div className="mt-2 text-sm text-slate-400">
-              Invite users and manage roles.
-            </div>
-          </Link>
-
-          <Link
-            href="/settings"
-            className="rounded-2xl border border-blue-500/30 bg-blue-500/10 p-5 transition hover:border-blue-400/40 hover:bg-blue-500/15"
-          >
-            <div className="text-sm font-medium text-white">Workspace</div>
-            <div className="mt-2 text-sm text-slate-400">
-              Edit company name, billing email, and forwarding.
-            </div>
-          </Link>
-
-          <Link
-            href="/invoices"
-            className="rounded-2xl border border-slate-800 bg-slate-900 p-5 transition hover:border-slate-700 hover:bg-slate-800"
-          >
-            <div className="text-sm font-medium text-white">Invoices</div>
-            <div className="mt-2 text-sm text-slate-400">
-              Return to invoice tracking.
-            </div>
-          </Link>
         </div>
 
         {message ? (
@@ -333,7 +303,100 @@ export default function SettingsPage() {
             Loading settings...
           </div>
         ) : (
-          <div className="space-y-6">
+          <>
+            <div className="grid gap-4 md:grid-cols-3">
+              <Link
+                href="/settings/team"
+                className="rounded-2xl border border-slate-800 bg-slate-900 p-5 transition hover:border-slate-700 hover:bg-slate-800"
+              >
+                <div className="text-sm font-medium text-white">
+                  Team settings
+                </div>
+                <div className="mt-2 text-sm text-slate-400">
+                  Invite users and manage roles.
+                </div>
+              </Link>
+
+              <div className="rounded-2xl border border-blue-500/30 bg-blue-500/10 p-5">
+                <div className="text-sm font-medium text-white">Workspace</div>
+                <div className="mt-2 text-sm text-slate-400">
+                  Edit company name and billing email.
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-medium text-white">
+                      Invoice forwarding
+                    </div>
+                    <div className="mt-2 text-sm text-slate-400">
+                      Forward supplier invoices directly into FlashFox.
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 rounded-xl border border-amber-500/20 bg-slate-950/70 p-3 text-xs text-slate-300">
+                  Forward to:{" "}
+                  <span className="font-semibold text-white">
+                    invoices@flashfox.co.uk
+                  </span>
+                </div>
+
+                <div className="mt-4 grid gap-2">
+                  <input
+                    type="email"
+                    value={newForwardingEmail}
+                    onChange={(e) => setNewForwardingEmail(e.target.value)}
+                    placeholder="accounts@company.com"
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-amber-400 focus:ring-2 focus:ring-amber-500/20"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={addForwardingSender}
+                    disabled={forwardingBusy || !newForwardingEmail.trim()}
+                    className="rounded-xl bg-amber-500 px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {forwardingBusy ? "Saving..." : "Add address"}
+                  </button>
+                </div>
+
+                <div className="mt-4 space-y-2">
+                  {forwardingSenders.length ? (
+                    forwardingSenders.map((sender) => (
+                      <div
+                        key={sender.id}
+                        className="flex items-center justify-between gap-2 rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2"
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-medium text-white">
+                            {sender.email}
+                          </div>
+                          <div className="text-xs text-slate-500">
+                            {sender.is_active ? "Active" : "Inactive"}
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => removeForwardingSender(sender.id)}
+                          disabled={forwardingBusy}
+                          className="shrink-0 text-xs font-medium text-rose-300 transition hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-400">
+                      No forwarding addresses yet.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
             <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
               <div className="rounded-[30px] border border-slate-800 bg-slate-900 p-6 shadow-xl shadow-black/10">
                 <div className="text-sm uppercase tracking-[0.14em] text-slate-500">
@@ -409,84 +472,7 @@ export default function SettingsPage() {
                 </div>
               </div>
             </div>
-
-            <div className="rounded-[30px] border border-slate-800 bg-slate-900 p-6 shadow-xl shadow-black/10">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div>
-                  <div className="text-sm uppercase tracking-[0.14em] text-slate-500">
-                    Invoice forwarding
-                  </div>
-
-                  <h2 className="mt-3 text-2xl font-semibold text-white">
-                    Forward invoices into FlashFox
-                  </h2>
-
-                  <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">
-                    Forward supplier invoice emails with PDF attachments to FlashFox.
-                    If the sender address is approved below, the invoice will be
-                    uploaded and parsed automatically.
-                  </p>
-                </div>
-
-                <div className="rounded-2xl border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-100">
-                  Forward to:{" "}
-                  <span className="font-semibold text-white">
-                    invoices@flashfox.co.uk
-                  </span>
-                </div>
-              </div>
-
-              <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_auto]">
-                <input
-                  type="email"
-                  value={newForwardingEmail}
-                  onChange={(e) => setNewForwardingEmail(e.target.value)}
-                  placeholder="accounts@company.com"
-                  className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20"
-                />
-
-                <button
-                  type="button"
-                  onClick={addForwardingSender}
-                  disabled={forwardingBusy || !newForwardingEmail.trim()}
-                  className="rounded-2xl bg-blue-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-400 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {forwardingBusy ? "Saving..." : "Add address"}
-                </button>
-              </div>
-
-              <div className="mt-6 space-y-3">
-                {forwardingSenders.length ? (
-                  forwardingSenders.map((sender) => (
-                    <div
-                      key={sender.id}
-                      className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-950/70 p-4 sm:flex-row sm:items-center sm:justify-between"
-                    >
-                      <div>
-                        <div className="font-medium text-white">{sender.email}</div>
-                        <div className="mt-1 text-xs text-slate-500">
-                          {sender.is_active ? "Active forwarding address" : "Inactive"}
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => removeForwardingSender(sender.id)}
-                        disabled={forwardingBusy}
-                        className="rounded-xl border border-rose-500/30 px-3 py-2 text-sm font-medium text-rose-200 transition hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))
-                ) : (
-                  <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 text-sm text-slate-400">
-                    No forwarding addresses have been added yet.
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
+          </>
         )}
       </div>
     </main>
