@@ -18,6 +18,8 @@ type ForwardingSender = {
   created_at: string;
 };
 
+type SettingsTab = "workspace" | "forwarding";
+
 async function readJsonResponse(res: Response) {
   const text = await res.text();
   if (!text) return null;
@@ -32,12 +34,11 @@ async function readJsonResponse(res: Response) {
 export default function SettingsPage() {
   const supabase = useMemo(() => createClient(), []);
 
+  const [activeTab, setActiveTab] = useState<SettingsTab>("workspace");
   const [company, setCompany] = useState<CompanySettings | null>(null);
   const [name, setName] = useState("");
   const [billingEmail, setBillingEmail] = useState("");
-  const [forwardingSenders, setForwardingSenders] = useState<
-    ForwardingSender[]
-  >([]);
+  const [forwardingSenders, setForwardingSenders] = useState<ForwardingSender[]>([]);
   const [newForwardingEmail, setNewForwardingEmail] = useState("");
 
   const [loading, setLoading] = useState(true);
@@ -64,9 +65,7 @@ export default function SettingsPage() {
 
   async function loadForwardingSenders(accessToken: string) {
     const res = await fetch("/api/settings/forwarding-senders", {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
+      headers: { Authorization: `Bearer ${accessToken}` },
       cache: "no-store",
     });
 
@@ -89,9 +88,7 @@ export default function SettingsPage() {
         if (!accessToken) return;
 
         const res = await fetch("/api/settings/company", {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
+          headers: { Authorization: `Bearer ${accessToken}` },
           cache: "no-store",
         });
 
@@ -184,9 +181,7 @@ export default function SettingsPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${accessToken}`,
         },
-        body: JSON.stringify({
-          email: newForwardingEmail,
-        }),
+        body: JSON.stringify({ email: newForwardingEmail }),
       });
 
       const body = await readJsonResponse(res);
@@ -257,6 +252,11 @@ export default function SettingsPage() {
     }
   }
 
+  const cardBase =
+    "rounded-2xl border p-5 text-left transition hover:border-slate-700 hover:bg-slate-800";
+  const activeCard = "border-blue-500/30 bg-blue-500/10";
+  const inactiveCard = "border-slate-800 bg-slate-900";
+
   return (
     <main className="min-h-screen bg-[#020817] px-6 py-8 text-white">
       <div className="mx-auto max-w-5xl space-y-6">
@@ -305,76 +305,177 @@ export default function SettingsPage() {
         ) : (
           <>
             <div className="grid gap-4 md:grid-cols-3">
-              <Link
-                href="/settings/team"
-                className="rounded-2xl border border-slate-800 bg-slate-900 p-5 transition hover:border-slate-700 hover:bg-slate-800"
-              >
-                <div className="text-sm font-medium text-white">
-                  Team settings
-                </div>
+              <Link href="/settings/team" className={`${cardBase} ${inactiveCard}`}>
+                <div className="text-sm font-medium text-white">Team settings</div>
                 <div className="mt-2 text-sm text-slate-400">
                   Invite users and manage roles.
                 </div>
               </Link>
 
-              <div className="rounded-2xl border border-blue-500/30 bg-blue-500/10 p-5">
+              <button
+                type="button"
+                onClick={() => setActiveTab("workspace")}
+                className={`${cardBase} ${
+                  activeTab === "workspace" ? activeCard : inactiveCard
+                }`}
+              >
                 <div className="text-sm font-medium text-white">Workspace</div>
                 <div className="mt-2 text-sm text-slate-400">
                   Edit company name and billing email.
                 </div>
-              </div>
+              </button>
 
-              <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-medium text-white">
-                      Invoice forwarding
+              <button
+                type="button"
+                onClick={() => setActiveTab("forwarding")}
+                className={`${cardBase} ${
+                  activeTab === "forwarding" ? activeCard : inactiveCard
+                }`}
+              >
+                <div className="text-sm font-medium text-white">
+                  Invoice forwarding
+                </div>
+                <div className="mt-2 text-sm text-slate-400">
+                  Forward supplier invoices directly into FlashFox.
+                </div>
+              </button>
+            </div>
+
+            {activeTab === "workspace" ? (
+              <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+                <div className="rounded-[30px] border border-slate-800 bg-slate-900 p-6 shadow-xl shadow-black/10">
+                  <div className="text-sm uppercase tracking-[0.14em] text-slate-500">
+                    Workspace identity
+                  </div>
+
+                  <h2 className="mt-3 text-2xl font-semibold text-white">
+                    {company?.name || "FlashFox workspace"}
+                  </h2>
+
+                  <p className="mt-3 text-sm leading-6 text-slate-400">
+                    This name appears in your workspace header, billing page, and
+                    payment reminder emails.
+                  </p>
+
+                  <div className="mt-6 space-y-3">
+                    <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 text-sm text-slate-300">
+                      Workspace ID:{" "}
+                      <span className="font-medium text-white">
+                        {company?.id
+                          ? `FFX-${company.id
+                              .replace(/-/g, "")
+                              .slice(0, 8)
+                              .toUpperCase()}`
+                          : "—"}
+                      </span>
                     </div>
-                    <div className="mt-2 text-sm text-slate-400">
-                      Forward supplier invoices directly into FlashFox.
+
+                    <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 text-sm text-slate-300">
+                      Lifetime invoice uploads:{" "}
+                      <span className="font-medium text-white">
+                        {company?.invoice_upload_count ?? 0}
+                      </span>
                     </div>
                   </div>
                 </div>
 
-                <div className="mt-4 rounded-xl border border-amber-500/20 bg-slate-950/70 p-3 text-xs text-slate-300">
-                  Forward to:{" "}
-                  <span className="font-semibold text-white">
-                    invoices@flashfox.co.uk
-                  </span>
+                <div className="rounded-[30px] border border-slate-800 bg-slate-900 p-6 shadow-xl shadow-black/10">
+                  <div className="space-y-5">
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-slate-300">
+                        Company / workspace name
+                      </label>
+                      <input
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="Acme Ltd"
+                        className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-slate-300">
+                        Billing email
+                      </label>
+                      <input
+                        type="email"
+                        value={billingEmail}
+                        onChange={(e) => setBillingEmail(e.target.value)}
+                        placeholder="accounts@company.com"
+                        className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20"
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={saveSettings}
+                      disabled={saving}
+                      className="w-full rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {saving ? "Saving settings..." : "Save workspace settings"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-[30px] border border-slate-800 bg-slate-900 p-6 shadow-xl shadow-black/10">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <div className="text-sm uppercase tracking-[0.14em] text-slate-500">
+                      Invoice forwarding
+                    </div>
+
+                    <h2 className="mt-3 text-2xl font-semibold text-white">
+                      Forward invoices into FlashFox
+                    </h2>
+
+                    <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">
+                      Forward supplier invoice emails with PDF attachments to
+                      FlashFox. If the sender address is approved below, the invoice
+                      will be uploaded and parsed automatically.
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm text-blue-100">
+                    Forward to:{" "}
+                    <span className="font-semibold text-white">
+                      invoices@flashfox.co.uk
+                    </span>
+                  </div>
                 </div>
 
-                <div className="mt-4 grid gap-2">
+                <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_auto]">
                   <input
                     type="email"
                     value={newForwardingEmail}
                     onChange={(e) => setNewForwardingEmail(e.target.value)}
                     placeholder="accounts@company.com"
-                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-amber-400 focus:ring-2 focus:ring-amber-500/20"
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20"
                   />
 
                   <button
                     type="button"
                     onClick={addForwardingSender}
                     disabled={forwardingBusy || !newForwardingEmail.trim()}
-                    className="rounded-xl bg-amber-500 px-3 py-2 text-sm font-semibold text-slate-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="rounded-2xl bg-blue-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-400 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {forwardingBusy ? "Saving..." : "Add address"}
                   </button>
                 </div>
 
-                <div className="mt-4 space-y-2">
+                <div className="mt-6 space-y-3">
                   {forwardingSenders.length ? (
                     forwardingSenders.map((sender) => (
                       <div
                         key={sender.id}
-                        className="flex items-center justify-between gap-2 rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2"
+                        className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-950/70 p-4 sm:flex-row sm:items-center sm:justify-between"
                       >
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-medium text-white">
-                            {sender.email}
-                          </div>
-                          <div className="text-xs text-slate-500">
-                            {sender.is_active ? "Active" : "Inactive"}
+                        <div>
+                          <div className="font-medium text-white">{sender.email}</div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            {sender.is_active
+                              ? "Active forwarding address"
+                              : "Inactive"}
                           </div>
                         </div>
 
@@ -382,96 +483,20 @@ export default function SettingsPage() {
                           type="button"
                           onClick={() => removeForwardingSender(sender.id)}
                           disabled={forwardingBusy}
-                          className="shrink-0 text-xs font-medium text-rose-300 transition hover:text-rose-200 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="rounded-xl border border-rose-500/30 px-3 py-2 text-sm font-medium text-rose-200 transition hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           Remove
                         </button>
                       </div>
                     ))
                   ) : (
-                    <div className="rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-400">
-                      No forwarding addresses yet.
+                    <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 text-sm text-slate-400">
+                      No forwarding addresses have been added yet.
                     </div>
                   )}
                 </div>
               </div>
-            </div>
-
-            <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
-              <div className="rounded-[30px] border border-slate-800 bg-slate-900 p-6 shadow-xl shadow-black/10">
-                <div className="text-sm uppercase tracking-[0.14em] text-slate-500">
-                  Workspace identity
-                </div>
-
-                <h2 className="mt-3 text-2xl font-semibold text-white">
-                  {company?.name || "FlashFox workspace"}
-                </h2>
-
-                <p className="mt-3 text-sm leading-6 text-slate-400">
-                  This name appears in your workspace header, billing page, and
-                  payment reminder emails.
-                </p>
-
-                <div className="mt-6 space-y-3">
-                  <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 text-sm text-slate-300">
-                    Workspace ID:{" "}
-                    <span className="font-medium text-white">
-                      {company?.id
-                        ? `FFX-${company.id
-                            .replace(/-/g, "")
-                            .slice(0, 8)
-                            .toUpperCase()}`
-                        : "—"}
-                    </span>
-                  </div>
-
-                  <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 text-sm text-slate-300">
-                    Lifetime invoice uploads:{" "}
-                    <span className="font-medium text-white">
-                      {company?.invoice_upload_count ?? 0}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-[30px] border border-slate-800 bg-slate-900 p-6 shadow-xl shadow-black/10">
-                <div className="space-y-5">
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-slate-300">
-                      Company / workspace name
-                    </label>
-                    <input
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder="Acme Ltd"
-                      className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-slate-300">
-                      Billing email
-                    </label>
-                    <input
-                      type="email"
-                      value={billingEmail}
-                      onChange={(e) => setBillingEmail(e.target.value)}
-                      placeholder="accounts@company.com"
-                      className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none transition placeholder:text-slate-500 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20"
-                    />
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={saveSettings}
-                    disabled={saving}
-                    className="w-full rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {saving ? "Saving settings..." : "Save workspace settings"}
-                  </button>
-                </div>
-              </div>
-            </div>
+            )}
           </>
         )}
       </div>
