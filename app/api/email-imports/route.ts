@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireCurrentCompany } from "@/lib/current-company";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
-    const { supabase, companyId } = await requireCurrentCompany(req);
+    const { companyId } = await requireCurrentCompany(req);
+    const admin = createAdminClient();
 
-    const { data, error } = await supabase
+    const { data, error } = await admin
       .from("email_imports")
       .select(
         "id, sender_email, from_email, subject, attachment_name, attachment_size, status, rejection_reason, invoice_id, created_at, processed_at"
