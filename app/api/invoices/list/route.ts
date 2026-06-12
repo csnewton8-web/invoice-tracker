@@ -20,6 +20,9 @@ const INVOICE_LIST_COLUMNS = [
   "currency",
   "notes",
   "is_paid",
+  "duplicate_of_invoice_id",
+  "duplicate_confidence",
+  "duplicate_status",
   "created_at",
   "updated_at",
 ].join(", ");

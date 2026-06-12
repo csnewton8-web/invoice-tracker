@@ -10,6 +10,7 @@ import {
 } from "@/lib/invoice-parser";
 import { getInvoiceLimitForPlan } from "@/lib/plans";
 import { createAuditLog } from "@/lib/audit-log";
+import { detectDuplicateInvoice } from "@/lib/duplicate-invoices";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -212,6 +213,60 @@ async function parseInvoiceBuffer(buffer: Buffer, filename: string) {
   return { parsed, rawText };
 }
 
+async function logEmailImport({
+  supabase,
+  companyId,
+  forwardingSenderId,
+  senderEmail,
+  fromEmail,
+  subject,
+  messageId,
+  attachmentName,
+  attachmentSize,
+  status,
+  rejectionReason,
+  invoiceId,
+}: {
+  supabase: any;
+  companyId?: string | null;
+  forwardingSenderId?: string | null;
+  senderEmail?: string | null;
+  fromEmail?: string | null;
+  subject?: string | null;
+  messageId?: string | null;
+  attachmentName?: string | null;
+  attachmentSize?: number | null;
+  status:
+    | "received"
+    | "imported"
+    | "duplicate"
+    | "rejected"
+    | "failed"
+    | "unknown_sender"
+    | "no_pdf";
+  rejectionReason?: string | null;
+  invoiceId?: string | null;
+}) {
+  const { error } = await supabase.from("email_imports").insert({
+    company_id: companyId ?? null,
+    forwarding_sender_id: forwardingSenderId ?? null,
+    sender_email: senderEmail ?? null,
+    from_email: fromEmail ?? null,
+    subject: subject ?? null,
+    message_id: messageId ?? null,
+    attachment_name: attachmentName ?? null,
+    attachment_size: attachmentSize ?? null,
+    status,
+    rejection_reason: rejectionReason ?? null,
+    invoice_id: invoiceId ?? null,
+    processed_at: new Date().toISOString(),
+  });
+
+  if (error) {
+    console.error("Failed to log email import:", error);
+  }
+}
+
 export async function POST(req: NextRequest) {
   const bucket = process.env.INVOICE_STORAGE_BUCKET || DEFAULT_INVOICE_BUCKET;
 
@@ -226,6 +281,9 @@ export async function POST(req: NextRequest) {
     const fromEmail = extractEmailAddress(event.data?.from);
     const recipients = (event.data?.to || []).map(extractEmailAddress);
     const attachments = event.data?.attachments || [];
+    const subject = event.data?.subject || null;
+
+    const supabase = createAdminClient();
 
     if (!emailId) {
       return jsonResponse({ success: true, ignored: true, reason: "missing_email_id" });
@@ -241,14 +299,20 @@ export async function POST(req: NextRequest) {
     }
 
     if (!fromEmail) {
+      await logEmailImport({
+        supabase,
+        status: "unknown_sender",
+        subject,
+        messageId: emailId,
+        rejectionReason: "Missing sender email",
+      });
+
       return jsonResponse({ success: true, ignored: true, reason: "missing_sender" });
     }
 
-    const supabase = createAdminClient();
-
     const { data: sender, error: senderError } = await supabase
       .from("email_forwarding_senders")
-      .select("company_id, user_id, email, is_active")
+      .select("id, company_id, user_id, email, is_active")
       .eq("email", fromEmail)
       .eq("is_active", true)
       .maybeSingle();
@@ -263,6 +327,16 @@ export async function POST(req: NextRequest) {
         emailId,
       });
 
+      await logEmailImport({
+        supabase,
+        senderEmail: fromEmail,
+        fromEmail,
+        subject,
+        messageId: emailId,
+        status: "unknown_sender",
+        rejectionReason: "Sender email not approved",
+      });
+
       return jsonResponse({
         success: true,
         ignored: true,
@@ -270,6 +344,8 @@ export async function POST(req: NextRequest) {
         fromEmail,
       });
     }
+
+    const forwardingSenderId = sender.id;
 
     const pdfAttachments = attachments.filter(
       (attachment) =>
@@ -279,6 +355,18 @@ export async function POST(req: NextRequest) {
     );
 
     if (!pdfAttachments.length) {
+      await logEmailImport({
+        supabase,
+        companyId: sender.company_id,
+        forwardingSenderId,
+        senderEmail: fromEmail,
+        fromEmail,
+        subject,
+        messageId: emailId,
+        status: "no_pdf",
+        rejectionReason: "No PDF attachment found",
+      });
+
       return jsonResponse({
         success: true,
         ignored: true,
@@ -309,6 +397,18 @@ export async function POST(req: NextRequest) {
       }
 
       if ((count || 0) >= invoiceLimit) {
+        await logEmailImport({
+          supabase,
+          companyId: sender.company_id,
+          forwardingSenderId,
+          senderEmail: fromEmail,
+          fromEmail,
+          subject,
+          messageId: emailId,
+          status: "rejected",
+          rejectionReason: "Invoice limit reached",
+        });
+
         return jsonResponse({
           success: true,
           ignored: true,
@@ -321,8 +421,9 @@ export async function POST(req: NextRequest) {
     const skippedAttachments: any[] = [];
 
     for (const attachment of pdfAttachments) {
+      const safeFileName = sanitizeFilename(attachment.filename);
+
       try {
-        const safeFileName = sanitizeFilename(attachment.filename);
         const downloadUrl = await getAttachmentDownloadUrl({
           emailId,
           attachmentId: attachment.id,
@@ -335,6 +436,21 @@ export async function POST(req: NextRequest) {
             filename: attachment.filename,
             reason: "not_valid_pdf",
           });
+
+          await logEmailImport({
+            supabase,
+            companyId: sender.company_id,
+            forwardingSenderId,
+            senderEmail: fromEmail,
+            fromEmail,
+            subject,
+            messageId: emailId,
+            attachmentName: safeFileName,
+            attachmentSize: buffer.length,
+            status: "rejected",
+            rejectionReason: "Attachment was not a valid PDF",
+          });
+
           continue;
         }
 
@@ -342,6 +458,46 @@ export async function POST(req: NextRequest) {
           .createHash("sha256")
           .update(buffer)
           .digest("hex");
+
+        const { data: existingExactInvoice, error: exactDuplicateError } =
+          await supabase
+            .from("invoices")
+            .select("id, supplier, invoice_number, file_name")
+            .eq("company_id", sender.company_id)
+            .eq("user_id", sender.user_id)
+            .eq("fingerprint", fingerprint)
+            .limit(1)
+            .maybeSingle();
+
+        if (exactDuplicateError) {
+          throw exactDuplicateError;
+        }
+
+        if (existingExactInvoice?.id) {
+          skippedAttachments.push({
+            filename: safeFileName,
+            reason: "exact_duplicate_pdf",
+            existing_invoice_id: existingExactInvoice.id,
+            existing_invoice_number: existingExactInvoice.invoice_number,
+          });
+
+          await logEmailImport({
+            supabase,
+            companyId: sender.company_id,
+            forwardingSenderId,
+            senderEmail: fromEmail,
+            fromEmail,
+            subject,
+            messageId: emailId,
+            attachmentName: safeFileName,
+            attachmentSize: buffer.length,
+            status: "duplicate",
+            rejectionReason: "Exact PDF already uploaded",
+            invoiceId: existingExactInvoice.id,
+          });
+
+          continue;
+        }
 
         const invoiceId = crypto.randomUUID();
         const filePath = `${sender.company_id}/invoices/${invoiceId}/${Date.now()}-${safeFileName}`;
@@ -362,6 +518,17 @@ export async function POST(req: NextRequest) {
           safeFileName
         );
 
+        const duplicateResult = await detectDuplicateInvoice(supabase, {
+          companyId: sender.company_id,
+          supplier: parsed?.supplier ?? null,
+          invoice_number: parsed?.invoice_number ?? null,
+          invoice_date: parsed?.invoice_date ?? null,
+          due_date: parsed?.due_date ?? null,
+          total: parsed?.total ?? null,
+          currency: parsed?.currency ?? null,
+          fingerprint,
+        });
+
         const invoiceRecord = {
           id: invoiceId,
           user_id: sender.user_id,
@@ -376,6 +543,9 @@ export async function POST(req: NextRequest) {
           confidence: parsed?.confidence ?? null,
           extraction_method: parsed?.extraction_method ?? "email_forward",
           fingerprint,
+          duplicate_of_invoice_id: duplicateResult.duplicate_of_invoice_id,
+          duplicate_confidence: duplicateResult.duplicate_confidence,
+          duplicate_status: duplicateResult.duplicate_status,
           file_name: safeFileName,
           file_path: filePath,
           file_size: buffer.length,
@@ -383,7 +553,7 @@ export async function POST(req: NextRequest) {
           notes: [
             ...(parsed?.notes || []),
             `Received by email from ${fromEmail}`,
-            `Email subject: ${event.data?.subject || "-"}`,
+            `Email subject: ${subject || "-"}`,
           ],
           is_paid: false,
           updated_at: new Date().toISOString(),
@@ -407,11 +577,40 @@ export async function POST(req: NextRequest) {
               filename: safeFileName,
               reason: "duplicate_invoice",
             });
+
+            await logEmailImport({
+              supabase,
+              companyId: sender.company_id,
+              forwardingSenderId,
+              senderEmail: fromEmail,
+              fromEmail,
+              subject,
+              messageId: emailId,
+              attachmentName: safeFileName,
+              attachmentSize: buffer.length,
+              status: "duplicate",
+              rejectionReason: "Duplicate invoice rejected by database constraint",
+            });
+
             continue;
           }
 
           throw insertError;
         }
+
+        await logEmailImport({
+          supabase,
+          companyId: sender.company_id,
+          forwardingSenderId,
+          senderEmail: fromEmail,
+          fromEmail,
+          subject,
+          messageId: emailId,
+          attachmentName: safeFileName,
+          attachmentSize: buffer.length,
+          invoiceId: invoice.id,
+          status: "imported",
+        });
 
         await createAuditLog({
           supabase,
@@ -430,6 +629,9 @@ export async function POST(req: NextRequest) {
             from_email: fromEmail,
             email_id: emailId,
             attachment_id: attachment.id,
+            duplicate_status: invoice.duplicate_status,
+            duplicate_confidence: invoice.duplicate_confidence,
+            duplicate_of_invoice_id: invoice.duplicate_of_invoice_id,
           },
         });
 
@@ -443,6 +645,20 @@ export async function POST(req: NextRequest) {
         skippedAttachments.push({
           filename: attachment.filename,
           reason: error instanceof Error ? error.message : "processing_failed",
+        });
+
+        await logEmailImport({
+          supabase,
+          companyId: sender.company_id,
+          forwardingSenderId: sender.id,
+          senderEmail: fromEmail,
+          fromEmail,
+          subject,
+          messageId: emailId,
+          attachmentName: safeFileName,
+          status: "failed",
+          rejectionReason:
+            error instanceof Error ? error.message : "Processing failed",
         });
       }
     }
@@ -459,6 +675,9 @@ export async function POST(req: NextRequest) {
         invoice_number: invoice.invoice_number,
         total: invoice.total,
         currency: invoice.currency,
+        duplicate_status: invoice.duplicate_status,
+        duplicate_confidence: invoice.duplicate_confidence,
+        duplicate_of_invoice_id: invoice.duplicate_of_invoice_id,
       })),
     });
   } catch (error) {

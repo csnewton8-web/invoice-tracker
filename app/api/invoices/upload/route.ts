@@ -12,6 +12,7 @@ import { getInvoiceLimitForPlan } from "@/lib/plans";
 import { validateInvoiceFile } from "@/lib/upload-limits";
 import { rateLimit } from "@/lib/rate-limit";
 import { createAuditLog } from "@/lib/audit-log";
+import { detectDuplicateInvoice } from "@/lib/duplicate-invoices";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -112,9 +113,7 @@ export async function POST(req: NextRequest) {
 
     if (!limiter.success) {
       return NextResponse.json(
-        {
-          error: "Too many uploads. Please try again later.",
-        },
+        { error: "Too many uploads. Please try again later." },
         {
           status: 429,
           headers: {
@@ -186,6 +185,31 @@ export async function POST(req: NextRequest) {
 
     const fingerprint = crypto.createHash("sha256").update(buffer).digest("hex");
 
+    const { data: existingExactInvoice, error: exactDuplicateError } =
+      await supabase
+        .from("invoices")
+        .select("id, supplier, invoice_number, file_name")
+        .eq("company_id", companyId)
+        .eq("user_id", user.id)
+        .eq("fingerprint", fingerprint)
+        .limit(1)
+        .maybeSingle();
+
+    if (exactDuplicateError) {
+      console.error("Exact duplicate check failed:", exactDuplicateError);
+      return jsonError("Could not check whether this PDF already exists", 500);
+    }
+
+    if (existingExactInvoice?.id) {
+      return NextResponse.json(
+        {
+          error: "This exact PDF has already been uploaded.",
+          existingInvoice: existingExactInvoice,
+        },
+        { status: 409 }
+      );
+    }
+
     const invoiceId = crypto.randomUUID();
     const safeFileName = sanitizeFilename(file.name);
     const filePath = `${companyId}/invoices/${invoiceId}/${Date.now()}-${safeFileName}`;
@@ -199,7 +223,7 @@ export async function POST(req: NextRequest) {
 
     if (uploadError) {
       console.error("Invoice PDF upload failed:", uploadError);
-      return jsonError("Could not upload invoice file", 500);
+      return jsonError(`Could not upload invoice file: ${uploadError.message}`, 500);
     }
 
     const rawText = await extractPdfText(buffer);
@@ -230,6 +254,17 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const duplicateResult = await detectDuplicateInvoice(supabase, {
+      companyId,
+      supplier: parsed?.supplier ?? null,
+      invoice_number: parsed?.invoice_number ?? null,
+      invoice_date: parsed?.invoice_date ?? null,
+      due_date: parsed?.due_date ?? null,
+      total: parsed?.total ?? null,
+      currency: parsed?.currency ?? null,
+      fingerprint,
+    });
+
     const invoiceRecord = {
       id: invoiceId,
       user_id: user.id,
@@ -244,6 +279,9 @@ export async function POST(req: NextRequest) {
       confidence: parsed?.confidence ?? null,
       extraction_method: parsed?.extraction_method ?? null,
       fingerprint,
+      duplicate_of_invoice_id: duplicateResult.duplicate_of_invoice_id,
+      duplicate_confidence: duplicateResult.duplicate_confidence,
+      duplicate_status: duplicateResult.duplicate_status,
       file_name: safeFileName,
       file_path: filePath,
       file_size: file.size ?? null,
@@ -271,7 +309,7 @@ export async function POST(req: NextRequest) {
       }
 
       console.error("Invoice database insert failed:", insertError);
-      return jsonError("Could not save invoice record", 500);
+      return jsonError(`Could not save invoice record: ${insertError.message}`, 500);
     }
 
     await createAuditLog({
@@ -288,6 +326,9 @@ export async function POST(req: NextRequest) {
         currency: data.currency,
         file_name: data.file_name,
         file_size: data.file_size,
+        duplicate_status: data.duplicate_status,
+        duplicate_confidence: data.duplicate_confidence,
+        duplicate_of_invoice_id: data.duplicate_of_invoice_id,
       },
     });
 
@@ -298,6 +339,9 @@ export async function POST(req: NextRequest) {
   } catch (error: unknown) {
     console.error("Invoice upload error:", error);
 
-    return jsonError("Upload failed", 500);
+    const message =
+      error instanceof Error ? error.message : "Unknown upload error";
+
+    return jsonError(`Upload failed: ${message}`, 500);
   }
 }

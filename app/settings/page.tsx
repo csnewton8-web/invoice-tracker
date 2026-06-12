@@ -18,6 +18,20 @@ type ForwardingSender = {
   created_at: string;
 };
 
+type EmailImport = {
+  id: string;
+  sender_email: string | null;
+  from_email: string | null;
+  subject: string | null;
+  attachment_name: string | null;
+  attachment_size: number | null;
+  status: string;
+  rejection_reason: string | null;
+  invoice_id: string | null;
+  created_at: string;
+  processed_at: string | null;
+};
+
 type SettingsTab = "workspace" | "forwarding";
 
 async function readJsonResponse(res: Response) {
@@ -31,6 +45,23 @@ async function readJsonResponse(res: Response) {
   }
 }
 
+function getImportStatusClass(status: string) {
+  switch (status) {
+    case "imported":
+      return "bg-green-500/10 text-green-300 border-green-500/30";
+    case "duplicate":
+      return "bg-yellow-500/10 text-yellow-300 border-yellow-500/30";
+    case "failed":
+    case "rejected":
+    case "unknown_sender":
+      return "bg-red-500/10 text-red-300 border-red-500/30";
+    case "no_pdf":
+      return "bg-slate-500/10 text-slate-300 border-slate-500/30";
+    default:
+      return "bg-blue-500/10 text-blue-300 border-blue-500/30";
+  }
+}
+
 export default function SettingsPage() {
   const supabase = useMemo(() => createClient(), []);
 
@@ -39,6 +70,7 @@ export default function SettingsPage() {
   const [name, setName] = useState("");
   const [billingEmail, setBillingEmail] = useState("");
   const [forwardingSenders, setForwardingSenders] = useState<ForwardingSender[]>([]);
+  const [emailImports, setEmailImports] = useState<EmailImport[]>([]);
   const [newForwardingEmail, setNewForwardingEmail] = useState("");
 
   const [loading, setLoading] = useState(true);
@@ -78,6 +110,21 @@ export default function SettingsPage() {
     setForwardingSenders(body?.senders || []);
   }
 
+  async function loadEmailImports(accessToken: string) {
+    const res = await fetch("/api/email-imports", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    });
+
+    const body = await readJsonResponse(res);
+
+    if (!res.ok) {
+      throw new Error(body?.error || "Failed to load email imports");
+    }
+
+    setEmailImports(body?.imports || []);
+  }
+
   useEffect(() => {
     async function loadSettings() {
       setLoading(true);
@@ -102,7 +149,10 @@ export default function SettingsPage() {
         setName(body?.company?.name || "");
         setBillingEmail(body?.company?.billing_email || "");
 
-        await loadForwardingSenders(accessToken);
+        await Promise.all([
+          loadForwardingSenders(accessToken),
+          loadEmailImports(accessToken),
+        ]);
       } catch (error) {
         setMessage({
           type: "error",
@@ -192,6 +242,8 @@ export default function SettingsPage() {
 
       setForwardingSenders((prev) => [body.sender, ...prev]);
       setNewForwardingEmail("");
+
+      await loadEmailImports(accessToken);
 
       setMessage({
         type: "success",
@@ -333,7 +385,7 @@ export default function SettingsPage() {
                 }`}
               >
                 <div className="text-sm font-medium text-white">
-                  Invoice forwarding
+                  Email Import
                 </div>
                 <div className="mt-2 text-sm text-slate-400">
                   Forward supplier invoices directly into FlashFox.
@@ -422,7 +474,7 @@ export default function SettingsPage() {
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div>
                     <div className="text-sm uppercase tracking-[0.14em] text-slate-500">
-                      Invoice forwarding
+                      Email Import
                     </div>
 
                     <h2 className="mt-3 text-2xl font-semibold text-white">
@@ -430,9 +482,9 @@ export default function SettingsPage() {
                     </h2>
 
                     <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400">
-                      Forward supplier invoice emails with PDF attachments to
-                      FlashFox. If the sender address is approved below, the invoice
-                      will be uploaded and parsed automatically.
+                      Automatically import supplier invoices from your accounts
+                      inbox. Add the email addresses that are allowed to forward
+                      invoices into this workspace.
                     </p>
                   </div>
 
@@ -442,6 +494,28 @@ export default function SettingsPage() {
                       invoices@flashfox.co.uk
                     </span>
                   </div>
+                </div>
+
+                <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                  <div className="text-sm font-semibold text-white">
+                    How automatic capture works
+                  </div>
+
+                  <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm leading-6 text-slate-400">
+                    <li>Add your accounts email address below.</li>
+                    <li>
+                      Create an Outlook or Gmail rule to forward invoice emails to{" "}
+                      <span className="font-medium text-white">
+                        invoices@flashfox.co.uk
+                      </span>
+                      .
+                    </li>
+                    <li>
+                      FlashFox receives the email, checks the sender is approved,
+                      and imports invoice PDFs automatically.
+                    </li>
+                    <li>Exact duplicate PDFs are blocked and recorded below.</li>
+                  </ol>
                 </div>
 
                 <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_auto]">
@@ -494,6 +568,87 @@ export default function SettingsPage() {
                       No forwarding addresses have been added yet.
                     </div>
                   )}
+                </div>
+
+                <div className="mt-10">
+                  <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <h3 className="text-lg font-semibold text-white">
+                        Recent Email Imports
+                      </h3>
+                      <p className="mt-1 text-sm text-slate-400">
+                        See what happened to emails forwarded into FlashFox.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const accessToken = await getAccessToken();
+                        if (accessToken) {
+                          await loadEmailImports(accessToken);
+                        }
+                      }}
+                      className="rounded-xl border border-slate-700 px-3 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800"
+                    >
+                      Refresh history
+                    </button>
+                  </div>
+
+                  <div className="overflow-hidden rounded-2xl border border-slate-800">
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-950">
+                        <tr>
+                          <th className="px-4 py-3 text-left">Date</th>
+                          <th className="px-4 py-3 text-left">Status</th>
+                          <th className="px-4 py-3 text-left">Attachment</th>
+                          <th className="px-4 py-3 text-left">Result</th>
+                        </tr>
+                      </thead>
+
+                      <tbody>
+                        {emailImports.length ? (
+                          emailImports.map((item) => (
+                            <tr key={item.id} className="border-t border-slate-800">
+                              <td className="whitespace-nowrap px-4 py-3 text-slate-400">
+                                {new Date(item.created_at).toLocaleString()}
+                              </td>
+
+                              <td className="px-4 py-3">
+                                <span
+                                  className={`rounded-full border px-2 py-1 text-xs font-medium ${getImportStatusClass(
+                                    item.status
+                                  )}`}
+                                >
+                                  {item.status}
+                                </span>
+                              </td>
+
+                              <td className="px-4 py-3 text-white">
+                                {item.attachment_name || "-"}
+                              </td>
+
+                              <td className="px-4 py-3 text-slate-300">
+                                {item.rejection_reason ||
+                                  (item.invoice_id
+                                    ? "Invoice imported successfully"
+                                    : "Processed")}
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td
+                              colSpan={4}
+                              className="px-4 py-6 text-center text-slate-500"
+                            >
+                              No email imports yet
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
             )}
