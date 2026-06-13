@@ -595,51 +595,128 @@ export default function SettingsPage() {
                     </button>
                   </div>
 
-                  <div className="overflow-hidden rounded-2xl border border-slate-800">
-                    <table className="w-full text-sm">
+                  <div className="rounded-2xl border border-slate-800">
+                    <table className="w-full table-fixed text-sm">
+                      <colgroup>
+                        <col className="w-[15%]" />
+                        <col className="w-[22%]" />
+                        <col className="w-[13%]" />
+                        <col className="w-[21%]" />
+                        <col className="w-[17%]" />
+                        <col className="w-[12%]" />
+                      </colgroup>
+
                       <thead className="bg-slate-950">
                         <tr>
-                          <th className="px-4 py-3 text-left">Date</th>
-                          <th className="px-4 py-3 text-left">Status</th>
-                          <th className="px-4 py-3 text-left">Attachment</th>
-                          <th className="px-4 py-3 text-left">Result</th>
+                          <th className="px-3 py-3 text-left text-xs font-semibold text-slate-300 sm:px-4">
+                            Date
+                          </th>
+                          <th className="px-3 py-3 text-left text-xs font-semibold text-slate-300 sm:px-4">
+                            From
+                          </th>
+                          <th className="px-3 py-3 text-left text-xs font-semibold text-slate-300 sm:px-4">
+                            Status
+                          </th>
+                          <th className="px-3 py-3 text-left text-xs font-semibold text-slate-300 sm:px-4">
+                            Attachment
+                          </th>
+                          <th className="px-3 py-3 text-left text-xs font-semibold text-slate-300 sm:px-4">
+                            Result
+                          </th>
+                          <th className="px-3 py-3 text-right text-xs font-semibold text-slate-300 sm:px-4">
+                            Actions
+                          </th>
                         </tr>
                       </thead>
 
                       <tbody>
                         {emailImports.length ? (
-                          emailImports.map((item) => (
-                            <tr key={item.id} className="border-t border-slate-800">
-                              <td className="whitespace-nowrap px-4 py-3 text-slate-400">
-                                {new Date(item.created_at).toLocaleString()}
-                              </td>
+                          emailImports.map((item) => {
+                            const createdAt = new Date(item.created_at);
+                            const sender = item.sender_email || item.from_email || "-";
 
-                              <td className="px-4 py-3">
-                                <span
-                                  className={`rounded-full border px-2 py-1 text-xs font-medium ${getImportStatusClass(
-                                    item.status
-                                  )}`}
+                            return (
+                              <tr key={item.id} className="border-t border-slate-800">
+                                <td className="px-3 py-4 text-slate-400 sm:px-4">
+                                  <div className="font-medium text-slate-300">
+                                    {createdAt.toLocaleDateString()}
+                                  </div>
+                                  <div className="mt-1 text-xs text-slate-500">
+                                    {createdAt.toLocaleTimeString()}
+                                  </div>
+                                </td>
+
+                                <td
+  className="px-3 py-4 text-slate-300 sm:px-4"
+  title={sender}
+>
+  <div className="truncate font-medium">
+    {sender}
+  </div>
+
+  {item.from_email &&
+  item.sender_email &&
+  item.from_email !== item.sender_email ? (
+    <div
+      className="mt-1 truncate text-xs text-slate-500"
+      title={item.from_email}
+    >
+      ↳ {item.from_email}
+    </div>
+  ) : (
+    <div className="mt-1 text-xs italic text-slate-500">
+      Manual forward
+    </div>
+  )}
+</td>
+
+                                <td className="px-3 py-4 sm:px-4">
+                                  <span
+                                    className={`inline-flex max-w-full rounded-full border px-2 py-1 text-xs font-medium ${getImportStatusClass(
+                                      item.status
+                                    )}`}
+                                  >
+                                    <span className="truncate">{item.status}</span>
+                                  </span>
+                                </td>
+
+                                <td
+                                  className="px-3 py-4 text-white sm:px-4"
+                                  title={item.attachment_name || "-"}
                                 >
-                                  {item.status}
-                                </span>
-                              </td>
+                                  <div className="break-words">
+                                    {item.attachment_name || "-"}
+                                  </div>
+                                </td>
 
-                              <td className="px-4 py-3 text-white">
-                                {item.attachment_name || "-"}
-                              </td>
+                                <td className="px-3 py-4 text-slate-300 sm:px-4">
+                                  <div className="break-words">
+                                    {item.rejection_reason ||
+                                      (item.invoice_id
+                                        ? "Invoice imported successfully"
+                                        : "Processed")}
+                                  </div>
+                                </td>
 
-                              <td className="px-4 py-3 text-slate-300">
-                                {item.rejection_reason ||
-                                  (item.invoice_id
-                                    ? "Invoice imported successfully"
-                                    : "Processed")}
-                              </td>
-                            </tr>
-                          ))
+                                <td className="px-3 py-4 text-right sm:px-4">
+                                  {item.invoice_id ? (
+                                    <Link
+                                      href={`/invoices?invoiceId=${item.invoice_id}`}
+                                      className="inline-flex items-center justify-center rounded-xl border border-slate-700 px-2 py-2 text-xs font-medium text-slate-200 transition hover:bg-slate-800"
+                                    >
+                                      Open
+                                    </Link>
+                                  ) : (
+                                    <span className="text-xs text-slate-600">-</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })
                         ) : (
                           <tr>
                             <td
-                              colSpan={4}
+                              colSpan={6}
                               className="px-4 py-6 text-center text-slate-500"
                             >
                               No email imports yet

@@ -273,6 +273,11 @@ export async function POST(req: NextRequest) {
   try {
     const event = (await req.json()) as ResendInboundEvent;
 
+    console.log(
+  "RESEND INBOUND PAYLOAD",
+  JSON.stringify(event, null, 2)
+);
+
     if (event.type !== "email.received") {
       return jsonResponse({ success: true, ignored: true, reason: "wrong_event" });
     }
