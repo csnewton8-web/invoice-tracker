@@ -309,6 +309,25 @@ export default function SettingsPage() {
   const activeCard = "border-blue-500/30 bg-blue-500/10";
   const inactiveCard = "border-slate-800 bg-slate-900";
 
+  const importedEmailInvoices = emailImports.filter(
+    (item) => item.status === "imported" && item.invoice_id
+  );
+
+  const autoCapturedInvoices = importedEmailInvoices.filter(
+    (item) =>
+      item.from_email &&
+      item.sender_email &&
+      item.from_email !== item.sender_email
+  ).length;
+
+  const manuallyForwardedInvoices =
+    importedEmailInvoices.length - autoCapturedInvoices;
+
+  const emailAutomationRate =
+    importedEmailInvoices.length > 0
+      ? Math.round((autoCapturedInvoices / importedEmailInvoices.length) * 100)
+      : 0;
+
   return (
     <main className="min-h-screen bg-[#020817] px-6 py-8 text-white">
       <div className="mx-auto max-w-5xl space-y-6">
@@ -570,6 +589,44 @@ export default function SettingsPage() {
                   )}
                 </div>
 
+                <div className="mt-10 grid gap-4 md:grid-cols-3">
+                  <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                    <div className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">
+                      Supplier Auto-Capture
+                    </div>
+                    <div className="mt-3 text-3xl font-semibold text-white">
+                      {autoCapturedInvoices}
+                    </div>
+                    <p className="mt-2 text-xs leading-5 text-slate-400">
+                      Supplier invoices received automatically via forwarding.
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                    <div className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">
+                      Manual Submission
+                    </div>
+                    <div className="mt-3 text-3xl font-semibold text-white">
+                      {manuallyForwardedInvoices}
+                    </div>
+                    <p className="mt-2 text-xs leading-5 text-slate-400">
+                      Invoices sent directly by an approved forwarding address.
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl border border-blue-500/30 bg-blue-500/10 p-4">
+                    <div className="text-xs font-medium uppercase tracking-[0.14em] text-blue-200">
+                      Email automation rate
+                    </div>
+                    <div className="mt-3 text-3xl font-semibold text-white">
+                      {emailAutomationRate}%
+                    </div>
+                    <p className="mt-2 text-xs leading-5 text-blue-100/80">
+                      Share of email imports captured from supplier-originated forwards.
+                    </p>
+                  </div>
+                </div>
+
                 <div className="mt-10">
                   <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                     <div>
@@ -647,28 +704,28 @@ export default function SettingsPage() {
                                 </td>
 
                                 <td
-  className="px-3 py-4 text-slate-300 sm:px-4"
-  title={sender}
->
-  <div className="truncate font-medium">
-    {sender}
-  </div>
+                                  className="px-3 py-4 text-slate-300 sm:px-4"
+                                  title={sender}
+                                >
+                                  <div className="truncate font-medium">
+                                    {sender}
+                                  </div>
 
-  {item.from_email &&
-  item.sender_email &&
-  item.from_email !== item.sender_email ? (
-    <div
-      className="mt-1 truncate text-xs text-slate-500"
-      title={item.from_email}
-    >
-      ↳ {item.from_email}
-    </div>
-  ) : (
-    <div className="mt-1 text-xs italic text-slate-500">
-      Manual forward
-    </div>
-  )}
-</td>
+                                  {item.from_email &&
+                                  item.sender_email &&
+                                  item.from_email !== item.sender_email ? (
+                                    <div
+                                      className="mt-1 truncate text-xs text-slate-500"
+                                      title={item.from_email}
+                                    >
+                                      ↳ {item.from_email}
+                                    </div>
+                                  ) : (
+                                    <div className="mt-1 text-xs italic text-slate-500">
+                                      Manual forward
+                                    </div>
+                                  )}
+                                </td>
 
                                 <td className="px-3 py-4 sm:px-4">
                                   <span
