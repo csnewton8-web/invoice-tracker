@@ -58,40 +58,81 @@ function getDueInfo(date?: string | null) {
   };
 }
 
-function getDisplayStatus(invoice: InvoiceRecord) {
-  if (invoice.is_paid) {
-    return {
-      label: "Paid",
-      status: "paid" as const,
-    };
+function getReviewInfo(invoice: InvoiceRecord) {
+  switch (invoice.review_status || "pending_review") {
+    case "approved":
+      return {
+        label: "Approved",
+        status: "approved" as const,
+      };
+    case "needs_attention":
+      return {
+        label: "Attention",
+        status: "needs_attention" as const,
+      };
+    case "pending_review":
+    default:
+      return {
+        label: "Pending",
+        status: "pending_review" as const,
+      };
   }
-
-  return getDueInfo(invoice.due_date ?? null);
 }
 
-function StatusBadge({
+function ReviewBadge({
   label,
   status,
 }: {
   label: string;
-  status: "paid" | "overdue" | "due" | "future" | "unknown";
+  status: "pending_review" | "approved" | "needs_attention";
 }) {
-  if (status === "unknown") return <span>-</span>;
-
   const className =
-    status === "paid"
+    status === "approved"
       ? "bg-green-100 text-green-700"
-      : status === "overdue"
+      : status === "needs_attention"
         ? "bg-red-100 text-red-700"
-        : status === "due"
-          ? "bg-yellow-100 text-yellow-700"
-          : "bg-slate-100 text-slate-700";
+        : "bg-yellow-100 text-yellow-700";
 
   return (
     <span
       className={`inline-flex whitespace-nowrap rounded-full px-2 py-1 text-[12px] font-medium ${className}`}
     >
       {label}
+    </span>
+  );
+}
+
+function PaymentBadge({
+  isPaid,
+}: {
+  isPaid?: boolean | null;
+}) {
+  return isPaid ? (
+    <span className="inline-flex whitespace-nowrap rounded-full bg-green-100 px-2 py-1 text-[12px] font-medium text-green-700">
+      Paid
+    </span>
+  ) : (
+    <span className="inline-flex whitespace-nowrap rounded-full bg-orange-100 px-2 py-1 text-[12px] font-medium text-orange-700">
+      Unpaid
+    </span>
+  );
+}
+
+function DuplicateBadge({
+  confidence,
+}: {
+  confidence?: number | null;
+}) {
+  return (
+    <span
+      title={
+        confidence != null
+          ? `Possible duplicate detected (${confidence}% confidence)`
+          : "Possible duplicate detected"
+      }
+      className="inline-flex whitespace-nowrap rounded-full bg-amber-100 px-2 py-1 text-[12px] font-semibold text-amber-800"
+    >
+      ⚠ Duplicate
     </span>
   );
 }
@@ -121,8 +162,8 @@ export function InvoiceTable({
             <col className="w-[8%]" />
             <col className="w-[7%]" />
             <col className="w-[11%]" />
-            <col className="w-[11%]" />
-            <col className="w-[13%]" />
+            <col className="w-[12%]" />
+            <col className="w-[10%]" />
             <col className="w-[8%]" />
             <col className="w-[9%]" />
             <col className="w-[8%]" />
@@ -144,7 +185,7 @@ export function InvoiceTable({
               <th className="px-2 py-4">PO#</th>
               <th className="px-2 py-4">Issue Date</th>
               <th className="px-2 py-4">Due Date</th>
-              <th className="px-2 py-4">Status</th>
+              <th className="px-2 py-4">Review</th>
               <th className="px-2 py-4">Currency</th>
               <th className="px-2 py-4 text-right">Total</th>
               <th className="px-2 py-4">Payment</th>
@@ -156,17 +197,37 @@ export function InvoiceTable({
             {invoices.map((invoice) => {
               const isSelected = selectedIds.includes(invoice.id);
               const isActive = invoice.id === selectedInvoiceId;
-              const displayStatus = getDisplayStatus(invoice);
-              const isOverdueUnpaid = displayStatus.status === "overdue";
+              const dueInfo = getDueInfo(invoice.due_date ?? null);
+              const reviewInfo = getReviewInfo(invoice);
+              const isOverdueUnpaid =
+                dueInfo.status === "overdue" && !invoice.is_paid;
               const isPaid = !!invoice.is_paid;
+              const isPossibleDuplicate =
+                invoice.duplicate_status === "possible";
+              const needsAttention =
+                (invoice.review_status || "pending_review") ===
+                "needs_attention";
 
               const rowClassName = isActive
                 ? "bg-blue-50"
-                : isPaid
-                  ? "bg-green-50"
-                  : isOverdueUnpaid
-                    ? "bg-red-50"
-                    : "bg-white hover:bg-blue-50/60";
+                : needsAttention
+                  ? "bg-red-50"
+                  : isPossibleDuplicate
+                    ? "bg-amber-50"
+                    : isPaid
+                      ? "bg-green-50"
+                      : isOverdueUnpaid
+                        ? "bg-red-50"
+                        : "bg-white hover:bg-blue-50/60";
+
+              const dueSubtextClass =
+                dueInfo.status === "overdue"
+                  ? "text-red-600"
+                  : dueInfo.status === "due"
+                    ? "text-yellow-700"
+                    : dueInfo.status === "future"
+                      ? "text-slate-500"
+                      : "text-slate-400";
 
               return (
                 <tr
@@ -190,7 +251,17 @@ export function InvoiceTable({
                     className="truncate px-2 py-4 align-middle font-medium"
                     title={invoice.supplier || invoice.file_name || "-"}
                   >
-                    {invoice.supplier || "-"}
+                    <div className="flex min-w-0 flex-col gap-1">
+                      <span className="truncate">
+                        {invoice.supplier || "-"}
+                      </span>
+
+                      {isPossibleDuplicate ? (
+                        <DuplicateBadge
+                          confidence={invoice.duplicate_confidence}
+                        />
+                      ) : null}
+                    </div>
                   </td>
 
                   <td
@@ -205,6 +276,7 @@ export function InvoiceTable({
                     title={invoice.po_number || "-"}
                   >
                     {invoice.po_number || "-"}
+                
                   </td>
 
                   <td className="whitespace-nowrap px-2 py-4 align-middle">
@@ -212,13 +284,16 @@ export function InvoiceTable({
                   </td>
 
                   <td className="whitespace-nowrap px-2 py-4 align-middle">
-                    {formatDateUK(invoice.due_date)}
+                    <div>{formatDateUK(invoice.due_date)}</div>
+                    <div className={`mt-1 text-[11px] font-medium ${dueSubtextClass}`}>
+                      {dueInfo.label}
+                    </div>
                   </td>
 
                   <td className="px-2 py-4 align-middle">
-                    <StatusBadge
-                      label={displayStatus.label}
-                      status={displayStatus.status}
+                    <ReviewBadge
+                      label={reviewInfo.label}
+                      status={reviewInfo.status}
                     />
                   </td>
 
@@ -231,13 +306,7 @@ export function InvoiceTable({
                   </td>
 
                   <td className="px-2 py-4 align-middle">
-                    {invoice.is_paid ? (
-                      <StatusBadge label="Paid" status="paid" />
-                    ) : (
-                      <span className="inline-flex whitespace-nowrap rounded-full bg-orange-100 px-2 py-1 text-[12px] font-medium text-orange-700">
-                        Unpaid
-                      </span>
-                    )}
+                    <PaymentBadge isPaid={invoice.is_paid} />
                   </td>
 
                   <td className="px-2 py-4 text-right align-middle">

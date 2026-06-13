@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/browser";
 
+type ReviewStatus = "pending_review" | "approved" | "needs_attention";
+
 type Invoice = {
   id: string;
   supplier?: string | null;
@@ -14,6 +16,9 @@ type Invoice = {
   total?: number | null;
   currency?: string | null;
   is_paid?: boolean | null;
+  review_status?: ReviewStatus | null;
+  reviewed_at?: string | null;
+  reviewed_by?: string | null;
   notes?: string[] | null;
 };
 
@@ -99,6 +104,52 @@ function formatMoney(total?: number | null, currency?: string | null) {
   }
 }
 
+function formatReviewedAt(value?: string | null) {
+  if (!value) return null;
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function getReviewStatusConfig(status?: ReviewStatus | null) {
+  switch (status) {
+    case "approved":
+      return {
+        label: "Approved",
+        description: "This invoice has been reviewed and approved.",
+        badgeClass:
+          "border-emerald-500/20 bg-emerald-500/12 text-emerald-200",
+        cardClass: "border-emerald-500/30 bg-emerald-500/10",
+      };
+    case "needs_attention":
+      return {
+        label: "Needs Attention",
+        description: "This invoice needs correction or further checking.",
+        badgeClass: "border-rose-500/20 bg-rose-500/12 text-rose-200",
+        cardClass: "border-rose-500/30 bg-rose-500/10",
+      };
+    case "pending_review":
+    default:
+      return {
+        label: "Pending Review",
+        description: "Check the extracted data before approving this invoice.",
+        badgeClass: "border-amber-500/20 bg-amber-500/12 text-amber-200",
+        cardClass: "border-amber-500/30 bg-amber-500/10",
+      };
+  }
+}
+
 function FieldShell({
   label,
   children,
@@ -178,11 +229,11 @@ export default function SelectedInvoicePanel({ invoice, onUpdate }: Props) {
     setSupplierDropdownOpen(false);
   }, [invoice]);
 
-  const healthLabel = useMemo(() => {
+  const paymentLabel = useMemo(() => {
     if (!invoice) return "Unknown";
     if (invoice.is_paid) return "Paid";
     if (invoice.due_date) return "Open";
-    return "Needs review";
+    return "Unpaid";
   }, [invoice]);
 
   const filteredSuppliers = useMemo(() => {
@@ -206,6 +257,9 @@ export default function SelectedInvoicePanel({ invoice, onUpdate }: Props) {
   }
 
   const selectedInvoice = invoice;
+  const reviewStatus = selectedInvoice.review_status || "pending_review";
+  const reviewConfig = getReviewStatusConfig(reviewStatus);
+  const reviewedAt = formatReviewedAt(selectedInvoice.reviewed_at);
 
   async function saveSupplierValue(value: string | null) {
     if (!selectedInvoice) return;
@@ -268,7 +322,23 @@ export default function SelectedInvoicePanel({ invoice, onUpdate }: Props) {
   }
 
   async function savePaidToggle() {
-    await onUpdate(selectedInvoice.id, "is_paid", !selectedInvoice.is_paid);
+    setSavingField("payment status");
+
+    try {
+      await onUpdate(selectedInvoice.id, "is_paid", !selectedInvoice.is_paid);
+    } finally {
+      setSavingField(null);
+    }
+  }
+
+  async function saveReviewStatus(status: ReviewStatus) {
+    setSavingField("review status");
+
+    try {
+      await onUpdate(selectedInvoice.id, "review_status", status);
+    } finally {
+      setSavingField(null);
+    }
   }
 
   return (
@@ -285,17 +355,29 @@ export default function SelectedInvoicePanel({ invoice, onUpdate }: Props) {
             </h2>
 
             <p className="mt-1 text-sm text-slate-400">
-              Edit fields here, then check the original PDF below.
+              Edit fields here, check the original PDF below, then approve the
+              invoice when the data is correct.
             </p>
           </div>
 
-          <div className="grid gap-2 sm:grid-cols-2 xl:min-w-[320px]">
-            <div className="rounded-2xl border border-slate-800 bg-slate-950/70 px-3 py-2.5">
-              <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-slate-500">
-                Status
+          <div className="grid gap-2 sm:grid-cols-3 xl:min-w-[480px]">
+            <div
+              className={`rounded-2xl border px-3 py-2.5 ${reviewConfig.cardClass}`}
+            >
+              <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-slate-300">
+                Review Status
               </div>
               <div className="mt-1 text-sm font-semibold text-white">
-                {healthLabel}
+                {reviewConfig.label}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/70 px-3 py-2.5">
+              <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-slate-500">
+                Payment
+              </div>
+              <div className="mt-1 text-sm font-semibold text-white">
+                {paymentLabel}
               </div>
             </div>
 
@@ -312,6 +394,12 @@ export default function SelectedInvoicePanel({ invoice, onUpdate }: Props) {
 
         <div className="mt-3 flex flex-wrap items-center gap-2.5">
           <div
+            className={`rounded-full border px-3 py-1 text-xs font-medium ${reviewConfig.badgeClass}`}
+          >
+            {reviewConfig.label}
+          </div>
+
+          <div
             className={`rounded-full border px-3 py-1 text-xs font-medium ${
               selectedInvoice.is_paid
                 ? "border-emerald-500/20 bg-emerald-500/12 text-emerald-200"
@@ -320,6 +408,38 @@ export default function SelectedInvoicePanel({ invoice, onUpdate }: Props) {
           >
             {selectedInvoice.is_paid ? "Paid" : "Unpaid"}
           </div>
+
+          <button
+            type="button"
+            onClick={() => saveReviewStatus("approved")}
+            disabled={savingField === "review status" || reviewStatus === "approved"}
+            className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-100 transition hover:bg-emerald-500/15 disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            Approve Invoice
+          </button>
+
+          <button
+            type="button"
+            onClick={() => saveReviewStatus("needs_attention")}
+            disabled={
+              savingField === "review status" ||
+              reviewStatus === "needs_attention"
+            }
+            className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm font-medium text-rose-100 transition hover:bg-rose-500/15 disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            Needs Attention
+          </button>
+
+          {reviewStatus !== "pending_review" ? (
+            <button
+              type="button"
+              onClick={() => saveReviewStatus("pending_review")}
+              disabled={savingField === "review status"}
+              className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              Reset Review
+            </button>
+          ) : null}
 
           <button
             type="button"
@@ -334,6 +454,20 @@ export default function SelectedInvoicePanel({ invoice, onUpdate }: Props) {
               ? `Saving ${savingField}…`
               : "Changes save on field exit"}
           </div>
+        </div>
+
+        <div className="mt-3 rounded-2xl border border-slate-800 bg-slate-950/60 px-4 py-3">
+          <div className="text-sm text-slate-300">{reviewConfig.description}</div>
+
+          {reviewedAt ? (
+            <div className="mt-1 text-xs text-slate-500">
+              Last reviewed: {reviewedAt}
+            </div>
+          ) : (
+            <div className="mt-1 text-xs text-slate-500">
+              Not reviewed yet.
+            </div>
+          )}
         </div>
       </div>
 

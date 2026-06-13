@@ -36,6 +36,10 @@ export async function POST(req: NextRequest) {
       "currency",
       "notes",
       "is_paid",
+      "archived_at",
+      "review_status",
+      "reviewed_at",
+      "reviewed_by",
     ];
 
     const updateData: Record<string, unknown> = {
@@ -48,6 +52,44 @@ export async function POST(req: NextRequest) {
       if (field in body) {
         updateData[field] = body[field];
         updatedFields.push(field);
+      }
+    }
+
+    if ("review_status" in body) {
+      const reviewStatus = body.review_status;
+
+      if (
+        reviewStatus !== "pending_review" &&
+        reviewStatus !== "approved" &&
+        reviewStatus !== "needs_attention"
+      ) {
+        return jsonError("Invalid review status", 400);
+      }
+
+      if (reviewStatus === "approved" || reviewStatus === "needs_attention") {
+        updateData.reviewed_at = new Date().toISOString();
+        updateData.reviewed_by = user.id;
+
+        if (!updatedFields.includes("reviewed_at")) {
+          updatedFields.push("reviewed_at");
+        }
+
+        if (!updatedFields.includes("reviewed_by")) {
+          updatedFields.push("reviewed_by");
+        }
+      }
+
+      if (reviewStatus === "pending_review") {
+        updateData.reviewed_at = null;
+        updateData.reviewed_by = null;
+
+        if (!updatedFields.includes("reviewed_at")) {
+          updatedFields.push("reviewed_at");
+        }
+
+        if (!updatedFields.includes("reviewed_by")) {
+          updatedFields.push("reviewed_by");
+        }
       }
     }
 
@@ -79,6 +121,10 @@ export async function POST(req: NextRequest) {
         updated_fields: updatedFields,
         invoice_number: data.invoice_number,
         supplier: data.supplier,
+        archived_at: data.archived_at,
+        review_status: data.review_status,
+        reviewed_at: data.reviewed_at,
+        reviewed_by: data.reviewed_by,
       },
     });
 
