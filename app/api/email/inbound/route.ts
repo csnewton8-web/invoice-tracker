@@ -48,7 +48,7 @@ function extractEmailAddress(value: string | null | undefined) {
   const match = value.match(/<([^>]+)>/);
   const email = match ? match[1] : value;
 
-  return email.trim().toLowerCase();
+  return email.trim().replace(/^mailto:/i, "").toLowerCase();
 }
 
 function sanitizeFilename(filename: string) {
@@ -108,6 +108,173 @@ function mergeParsedResults(
       new Set([...(first.notes || []), ...(second.notes || [])])
     ),
   };
+}
+
+function stripHtml(value: string) {
+  return value
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+\n/g, "\n")
+    .replace(/\n\s+/g, "\n")
+    .trim();
+}
+
+function getReceivedEmailRoot(payload: any) {
+  if (payload?.data && typeof payload.data === "object") {
+    return payload.data;
+  }
+
+  return payload;
+}
+
+function getHeaderValues(receivedEmail: any, headerName: string) {
+  const headers = receivedEmail?.headers;
+  const target = headerName.toLowerCase();
+  const values: string[] = [];
+
+  if (!headers) return values;
+
+  if (Array.isArray(headers)) {
+    for (const header of headers) {
+      if (Array.isArray(header)) {
+        const [name, value] = header;
+
+        if (String(name || "").toLowerCase() === target && value) {
+          values.push(String(value));
+        }
+      } else if (
+        String(header?.name || header?.key || "").toLowerCase() === target &&
+        header?.value
+      ) {
+        values.push(String(header.value));
+      }
+    }
+
+    return values;
+  }
+
+  if (typeof headers === "object") {
+    for (const [name, value] of Object.entries(headers)) {
+      if (name.toLowerCase() !== target) continue;
+
+      if (Array.isArray(value)) {
+        values.push(...value.map((item) => String(item)));
+      } else if (value) {
+        values.push(String(value));
+      }
+    }
+  }
+
+  return values;
+}
+
+function getLikelyOriginalSenderFromBody(body: string, forwardingSenderEmail: string) {
+  const patterns = [
+    /(?:^|\n)\s*From:\s*(.+?)(?:\r?\n|$)/i,
+    /(?:^|\n)\s*Original From:\s*(.+?)(?:\r?\n|$)/i,
+    /(?:^|\n)\s*Sender:\s*(.+?)(?:\r?\n|$)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = body.match(pattern);
+    const email = extractEmailAddress(match?.[1]);
+
+    if (
+      email &&
+      email !== forwardingSenderEmail &&
+      email !== INBOUND_ADDRESS
+    ) {
+      return email;
+    }
+  }
+
+  return "";
+}
+
+async function getReceivedEmailDetails(emailId: string) {
+  const apiKey = process.env.RESEND_API_KEY;
+
+  if (!apiKey) {
+    console.warn("Missing RESEND_API_KEY; cannot fetch received email details");
+    return null;
+  }
+
+  try {
+    const res = await fetch(
+      `https://api.resend.com/emails/receiving/${encodeURIComponent(emailId)}`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+        cache: "no-store",
+      }
+    );
+
+    const body = await res.json();
+
+    if (!res.ok) {
+      console.warn("Resend received email lookup failed:", body);
+      return null;
+    }
+
+    return getReceivedEmailRoot(body);
+  } catch (error) {
+    console.warn("Could not fetch received email details:", error);
+    return null;
+  }
+}
+
+function getOriginalFromEmail(receivedEmail: any, forwardingSenderEmail: string) {
+  const headerNames = [
+    "x-original-from",
+    "x-forwarded-from",
+    "x-forwarded-sender",
+    "x-forwarded-for",
+    "resent-from",
+    "reply-to",
+    "return-path",
+  ];
+
+  for (const headerName of headerNames) {
+    const values = getHeaderValues(receivedEmail, headerName);
+
+    for (const value of values) {
+      const email = extractEmailAddress(value);
+
+      if (
+        email &&
+        email !== forwardingSenderEmail &&
+        email !== INBOUND_ADDRESS
+      ) {
+        return email;
+      }
+    }
+  }
+
+  const bodyParts = [
+    receivedEmail?.text,
+    receivedEmail?.text_body,
+    receivedEmail?.plain,
+    receivedEmail?.html ? stripHtml(String(receivedEmail.html)) : "",
+    receivedEmail?.html_body ? stripHtml(String(receivedEmail.html_body)) : "",
+  ].filter(Boolean);
+
+  for (const bodyPart of bodyParts) {
+    const email = getLikelyOriginalSenderFromBody(
+      String(bodyPart),
+      forwardingSenderEmail
+    );
+
+    if (email) return email;
+  }
+
+  return forwardingSenderEmail;
 }
 
 async function safeDeleteUploadedFile({
@@ -273,17 +440,12 @@ export async function POST(req: NextRequest) {
   try {
     const event = (await req.json()) as ResendInboundEvent;
 
-    console.log(
-  "RESEND INBOUND PAYLOAD",
-  JSON.stringify(event, null, 2)
-);
-
     if (event.type !== "email.received") {
       return jsonResponse({ success: true, ignored: true, reason: "wrong_event" });
     }
 
     const emailId = event.data?.email_id;
-    const fromEmail = extractEmailAddress(event.data?.from);
+    const forwardingFromEmail = extractEmailAddress(event.data?.from);
     const recipients = (event.data?.to || []).map(extractEmailAddress);
     const attachments = event.data?.attachments || [];
     const subject = event.data?.subject || null;
@@ -303,7 +465,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    if (!fromEmail) {
+    if (!forwardingFromEmail) {
       await logEmailImport({
         supabase,
         status: "unknown_sender",
@@ -315,10 +477,16 @@ export async function POST(req: NextRequest) {
       return jsonResponse({ success: true, ignored: true, reason: "missing_sender" });
     }
 
+    const receivedEmailDetails = await getReceivedEmailDetails(emailId);
+    const originalFromEmail = getOriginalFromEmail(
+      receivedEmailDetails,
+      forwardingFromEmail
+    );
+
     const { data: sender, error: senderError } = await supabase
       .from("email_forwarding_senders")
       .select("id, company_id, user_id, email, is_active")
-      .eq("email", fromEmail)
+      .eq("email", forwardingFromEmail)
       .eq("is_active", true)
       .maybeSingle();
 
@@ -328,14 +496,15 @@ export async function POST(req: NextRequest) {
 
     if (!sender?.company_id || !sender?.user_id) {
       console.warn("Inbound email rejected: sender not approved", {
-        fromEmail,
+        forwardingFromEmail,
+        originalFromEmail,
         emailId,
       });
 
       await logEmailImport({
         supabase,
-        senderEmail: fromEmail,
-        fromEmail,
+        senderEmail: forwardingFromEmail,
+        fromEmail: originalFromEmail,
         subject,
         messageId: emailId,
         status: "unknown_sender",
@@ -346,7 +515,7 @@ export async function POST(req: NextRequest) {
         success: true,
         ignored: true,
         reason: "sender_not_approved",
-        fromEmail,
+        fromEmail: forwardingFromEmail,
       });
     }
 
@@ -364,8 +533,8 @@ export async function POST(req: NextRequest) {
         supabase,
         companyId: sender.company_id,
         forwardingSenderId,
-        senderEmail: fromEmail,
-        fromEmail,
+        senderEmail: forwardingFromEmail,
+        fromEmail: originalFromEmail,
         subject,
         messageId: emailId,
         status: "no_pdf",
@@ -406,8 +575,8 @@ export async function POST(req: NextRequest) {
           supabase,
           companyId: sender.company_id,
           forwardingSenderId,
-          senderEmail: fromEmail,
-          fromEmail,
+          senderEmail: forwardingFromEmail,
+          fromEmail: originalFromEmail,
           subject,
           messageId: emailId,
           status: "rejected",
@@ -446,8 +615,8 @@ export async function POST(req: NextRequest) {
             supabase,
             companyId: sender.company_id,
             forwardingSenderId,
-            senderEmail: fromEmail,
-            fromEmail,
+            senderEmail: forwardingFromEmail,
+            fromEmail: originalFromEmail,
             subject,
             messageId: emailId,
             attachmentName: safeFileName,
@@ -490,8 +659,8 @@ export async function POST(req: NextRequest) {
             supabase,
             companyId: sender.company_id,
             forwardingSenderId,
-            senderEmail: fromEmail,
-            fromEmail,
+            senderEmail: forwardingFromEmail,
+            fromEmail: originalFromEmail,
             subject,
             messageId: emailId,
             attachmentName: safeFileName,
@@ -534,6 +703,14 @@ export async function POST(req: NextRequest) {
           fingerprint,
         });
 
+        const emailNotes =
+          originalFromEmail !== forwardingFromEmail
+            ? [
+                `Originally sent by email from ${originalFromEmail}`,
+                `Forwarded into FlashFox by ${forwardingFromEmail}`,
+              ]
+            : [`Received by email from ${forwardingFromEmail}`];
+
         const invoiceRecord = {
           id: invoiceId,
           user_id: sender.user_id,
@@ -557,7 +734,7 @@ export async function POST(req: NextRequest) {
           raw_text: rawText ?? null,
           notes: [
             ...(parsed?.notes || []),
-            `Received by email from ${fromEmail}`,
+            ...emailNotes,
             `Email subject: ${subject || "-"}`,
           ],
           is_paid: false,
@@ -587,8 +764,8 @@ export async function POST(req: NextRequest) {
               supabase,
               companyId: sender.company_id,
               forwardingSenderId,
-              senderEmail: fromEmail,
-              fromEmail,
+              senderEmail: forwardingFromEmail,
+              fromEmail: originalFromEmail,
               subject,
               messageId: emailId,
               attachmentName: safeFileName,
@@ -607,8 +784,8 @@ export async function POST(req: NextRequest) {
           supabase,
           companyId: sender.company_id,
           forwardingSenderId,
-          senderEmail: fromEmail,
-          fromEmail,
+          senderEmail: forwardingFromEmail,
+          fromEmail: originalFromEmail,
           subject,
           messageId: emailId,
           attachmentName: safeFileName,
@@ -631,7 +808,8 @@ export async function POST(req: NextRequest) {
             currency: invoice.currency,
             file_name: invoice.file_name,
             file_size: invoice.file_size,
-            from_email: fromEmail,
+            sender_email: forwardingFromEmail,
+            from_email: originalFromEmail,
             email_id: emailId,
             attachment_id: attachment.id,
             duplicate_status: invoice.duplicate_status,
@@ -656,8 +834,8 @@ export async function POST(req: NextRequest) {
           supabase,
           companyId: sender.company_id,
           forwardingSenderId: sender.id,
-          senderEmail: fromEmail,
-          fromEmail,
+          senderEmail: forwardingFromEmail,
+          fromEmail: originalFromEmail,
           subject,
           messageId: emailId,
           attachmentName: safeFileName,
@@ -671,7 +849,8 @@ export async function POST(req: NextRequest) {
     return jsonResponse({
       success: true,
       received: true,
-      from: fromEmail,
+      from: forwardingFromEmail,
+      original_from: originalFromEmail,
       created: createdInvoices.length,
       skipped: skippedAttachments,
       invoices: createdInvoices.map((invoice) => ({
