@@ -916,14 +916,57 @@ export function InvoiceWorkspace({
     setMatchingInvoiceId(id);
   }
 
-  function handleConnectProvider(provider: "Xero" | "Sage" | "QuickBooks") {
+  async function handleConnectProvider(
+  provider: "Xero" | "Sage" | "QuickBooks"
+) {
+  if (provider !== "Xero") {
     pushToast({
       type: "info",
-      title: `${provider} matching coming soon`,
+      title: `${provider} integration coming soon`,
       message:
-        "The accounting connection framework is ready. Live PO, bill, and PDF attachment actions will be added in the next integration step.",
+        "Xero is being connected first. Sage and QuickBooks will follow.",
+    });
+    return;
+  }
+
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error("You must be logged in.");
+    }
+
+    const res = await fetch("/api/integrations/xero/connect", {
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+      },
+    });
+
+    if (!res.ok) {
+      const body = await res.json();
+      throw new Error(body.error || "Failed to start Xero connection");
+    }
+
+    const body = await res.json();
+
+if (!body.authUrl) {
+  throw new Error("Xero authorization URL was not returned.");
+}
+
+window.location.href = body.authUrl;
+  } catch (error) {
+    pushToast({
+      type: "error",
+      title: "Xero connection failed",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Could not start Xero connection.",
     });
   }
+}
 
   function toggleSelect(id: string) {
     setSelectedIds((prev) =>
