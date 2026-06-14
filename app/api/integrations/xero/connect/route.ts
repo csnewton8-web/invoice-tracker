@@ -35,6 +35,11 @@ export async function GET(req: NextRequest) {
 
     const authUrl = `https://login.xero.com/identity/connect/authorize?${params.toString()}`;
 
+    console.log("XERO AUTH DEBUG", {
+  redirectUri,
+  authUrl,
+});
+
     return NextResponse.json({ authUrl });
   } catch (error) {
     console.error("Xero connect error:", error);
