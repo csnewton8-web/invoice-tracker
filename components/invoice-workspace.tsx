@@ -83,6 +83,47 @@ type PendingAction =
       confirmLabel: string;
     };
 
+type AccountingIntegration = {
+  id: string;
+  provider: "xero" | "sage" | "quickbooks" | string;
+  status: "connected" | "disconnected" | string;
+  external_tenant_id?: string | null;
+  connected_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+function formatProviderName(provider?: string | null) {
+  switch (provider) {
+    case "xero":
+      return "Xero";
+    case "sage":
+      return "Sage";
+    case "quickbooks":
+      return "QuickBooks";
+    default:
+      return provider || "Accounting software";
+  }
+}
+
+function formatConnectedAt(value?: string | null) {
+  if (!value) return null;
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
 function ToastStack({
   toasts,
   onDismiss,
@@ -181,14 +222,24 @@ function ConfirmDialog({
 
 function MatchInvoiceModal({
   invoice,
+  integrations,
+  loadingIntegrations,
   onClose,
   onConnectProvider,
 }: {
   invoice: InvoiceRecord | null;
+  integrations: AccountingIntegration[];
+  loadingIntegrations: boolean;
   onClose: () => void;
   onConnectProvider: (provider: "Xero" | "Sage" | "QuickBooks") => void;
 }) {
   if (!invoice) return null;
+
+  const connectedIntegrations = integrations.filter(
+    (integration) => integration.status === "connected"
+  );
+  const primaryIntegration = connectedIntegrations[0] || null;
+  const connectedAt = formatConnectedAt(primaryIntegration?.connected_at);
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/70 px-4 backdrop-blur-sm">
@@ -260,42 +311,97 @@ function MatchInvoiceModal({
             </div>
           </div>
 
-          <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
-            <div className="text-sm font-semibold text-white">
-              Accounting software not connected
+          {loadingIntegrations ? (
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+              <div className="text-sm font-semibold text-white">
+                Checking accounting software connection...
+              </div>
+              <p className="mt-2 text-sm leading-6 text-slate-400">
+                FlashFox is checking whether this workspace already has an
+                accounting system connected.
+              </p>
             </div>
-            <p className="mt-2 text-sm leading-6 text-amber-100">
-              Connect your accounting software to view matching purchase orders,
-              view matching bills, and attach the invoice PDF directly from
-              FlashFox.
-            </p>
+          ) : primaryIntegration ? (
+            <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4">
+              <div className="text-sm font-semibold text-white">
+                ✓ {formatProviderName(primaryIntegration.provider)} connected
+              </div>
+              <p className="mt-2 text-sm leading-6 text-emerald-100">
+                This workspace is ready for accounting software matching. The
+                buttons below are placeholders until the provider integration is
+                connected to live purchase orders and bills.
+              </p>
 
-            <div className="mt-4 grid gap-3 sm:grid-cols-3">
-              <button
-                type="button"
-                onClick={() => onConnectProvider("Xero")}
-                className="rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
-              >
-                Connect Xero
-              </button>
+              {connectedAt ? (
+                <p className="mt-2 text-xs text-emerald-100/80">
+                  Connected: {connectedAt}
+                </p>
+              ) : null}
 
-              <button
-                type="button"
-                onClick={() => onConnectProvider("Sage")}
-                className="rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
-              >
-                Connect Sage
-              </button>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <button
+                  type="button"
+                  onClick={() => onConnectProvider(formatProviderName(primaryIntegration.provider) as "Xero" | "Sage" | "QuickBooks")}
+                  className="rounded-2xl border border-emerald-400/30 bg-slate-950 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
+                >
+                  View Matching PO
+                </button>
 
-              <button
-                type="button"
-                onClick={() => onConnectProvider("QuickBooks")}
-                className="rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
-              >
-                Connect QuickBooks
-              </button>
+                <button
+                  type="button"
+                  onClick={() => onConnectProvider(formatProviderName(primaryIntegration.provider) as "Xero" | "Sage" | "QuickBooks")}
+                  className="rounded-2xl border border-emerald-400/30 bg-slate-950 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
+                >
+                  View Matching Bill
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => onConnectProvider(formatProviderName(primaryIntegration.provider) as "Xero" | "Sage" | "QuickBooks")}
+                  className="rounded-2xl border border-emerald-400/30 bg-slate-950 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
+                >
+                  Attach PDF to Bill
+                </button>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
+              <div className="text-sm font-semibold text-white">
+                Accounting software not connected
+              </div>
+              <p className="mt-2 text-sm leading-6 text-amber-100">
+                Connect your accounting software to view matching purchase
+                orders, view matching bills, and attach the invoice PDF directly
+                from FlashFox.
+              </p>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <button
+                  type="button"
+                  onClick={() => onConnectProvider("Xero")}
+                  className="rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
+                >
+                  Connect Xero
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => onConnectProvider("Sage")}
+                  className="rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
+                >
+                  Connect Sage
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => onConnectProvider("QuickBooks")}
+                  className="rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
+                >
+                  Connect QuickBooks
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="grid gap-3 md:grid-cols-3">
             <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
@@ -348,6 +454,11 @@ export function InvoiceWorkspace({
   );
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [payLinkUrl, setPayLinkUrl] = useState("");
+  const [accountingIntegrations, setAccountingIntegrations] = useState<
+    AccountingIntegration[]
+  >([]);
+  const [loadingAccountingIntegrations, setLoadingAccountingIntegrations] =
+    useState(false);
 
   const [deleting, setDeleting] = useState(false);
   const [markingPaid, setMarkingPaid] = useState(false);
@@ -401,10 +512,49 @@ export function InvoiceWorkspace({
     }
   }, [supabase]);
 
+  const loadAccountingIntegrations = useCallback(async () => {
+    setLoadingAccountingIntegrations(true);
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        setAccountingIntegrations([]);
+        return;
+      }
+
+      const res = await fetch("/api/accounting-integrations", {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        cache: "no-store",
+      });
+
+      const contentType = res.headers.get("content-type") || "";
+      const body = contentType.includes("application/json")
+        ? await res.json()
+        : { error: await res.text() };
+
+      if (!res.ok) {
+        throw new Error(body.error || "Failed to load accounting integrations");
+      }
+
+      setAccountingIntegrations(body.integrations || []);
+    } catch (error) {
+      console.error("Failed to load accounting integrations:", error);
+      setAccountingIntegrations([]);
+    } finally {
+      setLoadingAccountingIntegrations(false);
+    }
+  }, [supabase]);
+
   useEffect(() => {
     setInvoices(initialInvoices);
     loadPayLink();
-  }, [initialInvoices, loadPayLink]);
+    loadAccountingIntegrations();
+  }, [initialInvoices, loadPayLink, loadAccountingIntegrations]);
 
   useEffect(() => {
     const invoiceId = searchParams.get("invoiceId");
@@ -769,9 +919,9 @@ export function InvoiceWorkspace({
   function handleConnectProvider(provider: "Xero" | "Sage" | "QuickBooks") {
     pushToast({
       type: "info",
-      title: `${provider} connection coming soon`,
+      title: `${provider} matching coming soon`,
       message:
-        "The matching workflow is ready. Accounting software connection will be added in the next integration step.",
+        "The accounting connection framework is ready. Live PO, bill, and PDF attachment actions will be added in the next integration step.",
     });
   }
 
@@ -995,6 +1145,8 @@ export function InvoiceWorkspace({
 
       <MatchInvoiceModal
         invoice={matchingInvoice}
+        integrations={accountingIntegrations}
+        loadingIntegrations={loadingAccountingIntegrations}
         onClose={() => setMatchingInvoiceId(null)}
         onConnectProvider={handleConnectProvider}
       />

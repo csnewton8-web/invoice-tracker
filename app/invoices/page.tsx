@@ -65,6 +65,12 @@ function WorkspaceLogo({
   );
 }
 
+function formatPlanName(plan?: string | null) {
+  if (!plan) return "Free Plan";
+
+  return `${plan.charAt(0).toUpperCase()}${plan.slice(1)} Plan`;
+}
+
 export default function InvoicesPage() {
   const supabase = useMemo(() => createClient(), []);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -353,31 +359,66 @@ export default function InvoicesPage() {
           </div>
         ) : null}
 
-        {!loading && company && !paid ? (
-          <div className="rounded-3xl border border-sky-500/30 bg-sky-500/10 p-6">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div>
-                <div className="text-lg font-semibold text-white">
-                  You are on the Free plan
-                </div>
-                <p className="mt-2 text-sm text-sky-100">
-                  Your free workspace includes supplier invoice payment reminders
-                  until you reach {FREE_PLAN_MAX_INVOICES} uploaded invoices.
-                </p>
-                <p className="mt-2 text-sm text-sky-100/90">
-                  You are using {invoiceCount} of {FREE_PLAN_MAX_INVOICES} free
-                  invoice uploads. {freeSlotsRemaining} remaining.
-                </p>
-              </div>
+        {!loading && company ? (
+          paid ? (
+            <div className="rounded-3xl border border-emerald-500/30 bg-emerald-500/10 p-6">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <div className="text-lg font-semibold text-white">
+                    ✓ {formatPlanName(company.plan)}
+                  </div>
 
-              <Link
-                href="/billing"
-                className="inline-flex rounded-2xl border border-transparent bg-white px-4 py-3 text-sm font-medium text-slate-950 transition hover:border-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-200"
-              >
-                Upgrade to Starter Plan
-              </Link>
+                  <p className="mt-2 text-sm text-emerald-100">
+                    Unlimited invoice uploads are included in your current plan.
+                  </p>
+
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-emerald-100/90">
+                    <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1">
+                      Invoice approvals enabled
+                    </span>
+                    <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1">
+                      Email forwarding enabled
+                    </span>
+                    <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1">
+                      Supplier analytics enabled
+                    </span>
+                  </div>
+                </div>
+
+                <Link
+                  href="/billing"
+                  className="inline-flex rounded-2xl border border-emerald-400/30 px-4 py-3 text-sm font-medium text-emerald-100 transition hover:bg-emerald-500/10"
+                >
+                  Manage plan
+                </Link>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="rounded-3xl border border-sky-500/30 bg-sky-500/10 p-6">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <div className="text-lg font-semibold text-white">
+                    You are on the Free plan
+                  </div>
+                  <p className="mt-2 text-sm text-sky-100">
+                    Your free workspace includes supplier invoice payment reminders
+                    until you reach {FREE_PLAN_MAX_INVOICES} uploaded invoices.
+                  </p>
+                  <p className="mt-2 text-sm text-sky-100/90">
+                    You are using {invoiceCount} of {FREE_PLAN_MAX_INVOICES} free
+                    invoice uploads. {freeSlotsRemaining} remaining.
+                  </p>
+                </div>
+
+                <Link
+                  href="/billing"
+                  className="inline-flex rounded-2xl border border-transparent bg-white px-4 py-3 text-sm font-medium text-slate-950 transition hover:border-emerald-400 hover:bg-emerald-500/10 hover:text-emerald-200"
+                >
+                  Upgrade to Starter Plan
+                </Link>
+              </div>
+            </div>
+          )
         ) : null}
 
         {!loading && !error ? <OnboardingChecklist /> : null}
@@ -527,7 +568,12 @@ export default function InvoicesPage() {
                     reminders and alert recipients while you stay under that
                     limit.
                   </div>
-                ) : null}
+                ) : (
+                  <div className="mt-8 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-100">
+                    Your {formatPlanName(company?.plan)} includes unlimited
+                    invoice uploads.
+                  </div>
+                )}
               </div>
 
               <div className="border-t border-slate-800 bg-slate-950/80 p-8 lg:border-l lg:border-t-0">

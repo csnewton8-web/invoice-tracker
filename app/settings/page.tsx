@@ -33,6 +33,14 @@ type EmailImport = {
 };
 
 type SettingsTab = "workspace" | "forwarding";
+type ImportStatusFilter =
+  | "all"
+  | "imported"
+  | "duplicate"
+  | "failed"
+  | "unknown_sender"
+  | "no_pdf";
+type ImportSourceFilter = "all" | "auto" | "manual";
 
 async function readJsonResponse(res: Response) {
   const text = await res.text();
@@ -62,6 +70,14 @@ function getImportStatusClass(status: string) {
   }
 }
 
+function isAutoCapturedImport(item: EmailImport) {
+  return Boolean(
+    item.from_email &&
+      item.sender_email &&
+      item.from_email !== item.sender_email
+  );
+}
+
 export default function SettingsPage() {
   const supabase = useMemo(() => createClient(), []);
 
@@ -72,6 +88,8 @@ export default function SettingsPage() {
   const [forwardingSenders, setForwardingSenders] = useState<ForwardingSender[]>([]);
   const [emailImports, setEmailImports] = useState<EmailImport[]>([]);
   const [newForwardingEmail, setNewForwardingEmail] = useState("");
+  const [statusFilter, setStatusFilter] = useState<ImportStatusFilter>("all");
+  const [sourceFilter, setSourceFilter] = useState<ImportSourceFilter>("all");
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -313,11 +331,8 @@ export default function SettingsPage() {
     (item) => item.status === "imported" && item.invoice_id
   );
 
-  const autoCapturedInvoices = importedEmailInvoices.filter(
-    (item) =>
-      item.from_email &&
-      item.sender_email &&
-      item.from_email !== item.sender_email
+  const autoCapturedInvoices = importedEmailInvoices.filter((item) =>
+    isAutoCapturedImport(item)
   ).length;
 
   const manuallyForwardedInvoices =
@@ -327,6 +342,23 @@ export default function SettingsPage() {
     importedEmailInvoices.length > 0
       ? Math.round((autoCapturedInvoices / importedEmailInvoices.length) * 100)
       : 0;
+
+  const filteredEmailImports = emailImports.filter((item) => {
+    const matchesStatus =
+      statusFilter === "all" ||
+      item.status === statusFilter ||
+      (statusFilter === "failed" && item.status === "rejected");
+
+    const isAuto = isAutoCapturedImport(item);
+    const matchesSource =
+      sourceFilter === "all" ||
+      (sourceFilter === "auto" && isAuto) ||
+      (sourceFilter === "manual" && !isAuto);
+
+    return matchesStatus && matchesSource;
+  });
+
+  const hasActiveFilters = statusFilter !== "all" || sourceFilter !== "all";
 
   return (
     <main className="min-h-screen bg-[#020817] px-6 py-8 text-white">
@@ -628,7 +660,7 @@ export default function SettingsPage() {
                 </div>
 
                 <div className="mt-10">
-                  <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                  <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                     <div>
                       <h3 className="text-lg font-semibold text-white">
                         Recent Email Imports
@@ -650,6 +682,71 @@ export default function SettingsPage() {
                     >
                       Refresh history
                     </button>
+                  </div>
+
+                  <div className="mb-4 grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
+                    <div>
+                      <label className="mb-2 block text-xs font-medium uppercase tracking-[0.14em] text-slate-500">
+                        Status
+                      </label>
+                      <select
+                        value={statusFilter}
+                        onChange={(e) =>
+                          setStatusFilter(e.target.value as ImportStatusFilter)
+                        }
+                        className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20"
+                      >
+                        <option value="all">All statuses</option>
+                        <option value="imported">Imported</option>
+                        <option value="duplicate">Duplicate</option>
+                        <option value="failed">Failed / rejected</option>
+                        <option value="unknown_sender">Unknown sender</option>
+                        <option value="no_pdf">No PDF</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-xs font-medium uppercase tracking-[0.14em] text-slate-500">
+                        Source
+                      </label>
+                      <select
+                        value={sourceFilter}
+                        onChange={(e) =>
+                          setSourceFilter(e.target.value as ImportSourceFilter)
+                        }
+                        className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20"
+                      >
+                        <option value="all">All sources</option>
+                        <option value="auto">Supplier Auto-Capture</option>
+                        <option value="manual">Manual Submission</option>
+                      </select>
+                    </div>
+
+                    <div className="flex items-end">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStatusFilter("all");
+                          setSourceFilter("all");
+                        }}
+                        disabled={!hasActiveFilters}
+                        className="w-full rounded-xl border border-slate-700 px-3 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Clear filters
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mb-3 text-xs text-slate-500">
+                    Showing{" "}
+                    <span className="font-medium text-slate-300">
+                      {filteredEmailImports.length}
+                    </span>{" "}
+                    of{" "}
+                    <span className="font-medium text-slate-300">
+                      {emailImports.length}
+                    </span>{" "}
+                    email imports
                   </div>
 
                   <div className="rounded-2xl border border-slate-800">
@@ -687,8 +784,8 @@ export default function SettingsPage() {
                       </thead>
 
                       <tbody>
-                        {emailImports.length ? (
-                          emailImports.map((item) => {
+                        {filteredEmailImports.length ? (
+                          filteredEmailImports.map((item) => {
                             const createdAt = new Date(item.created_at);
                             const sender = item.sender_email || item.from_email || "-";
 
@@ -776,7 +873,9 @@ export default function SettingsPage() {
                               colSpan={6}
                               className="px-4 py-6 text-center text-slate-500"
                             >
-                              No email imports yet
+                              {hasActiveFilters
+                                ? "No email imports match these filters"
+                                : "No email imports yet"}
                             </td>
                           </tr>
                         )}
