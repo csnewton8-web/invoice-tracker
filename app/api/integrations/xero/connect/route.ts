@@ -26,8 +26,12 @@ export async function GET(req: NextRequest) {
       redirect_uri: redirectUri,
       scope: [
   "offline_access",
-  "accounting.transactions",
-  "accounting.settings",
+  "accounting.invoices",
+  "accounting.invoices.read",
+  "accounting.contacts.read",
+  "accounting.settings.read",
+  "accounting.attachments",
+  "accounting.attachments.read",
 ].join(" "),
       state,
     });
