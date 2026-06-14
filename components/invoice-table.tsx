@@ -9,6 +9,7 @@ type Props = {
   onToggleSelect: (id: string) => void;
   onToggleSelectAll: () => void;
   onViewInvoice: (id: string) => void;
+  onMatchInvoice?: (id: string) => void;
   payLinkUrl?: string;
 };
 
@@ -102,11 +103,7 @@ function ReviewBadge({
   );
 }
 
-function PaymentBadge({
-  isPaid,
-}: {
-  isPaid?: boolean | null;
-}) {
+function PaymentBadge({ isPaid }: { isPaid?: boolean | null }) {
   return isPaid ? (
     <span className="inline-flex whitespace-nowrap rounded-full bg-green-100 px-2 py-1 text-[12px] font-medium text-green-700">
       Paid
@@ -118,11 +115,7 @@ function PaymentBadge({
   );
 }
 
-function DuplicateBadge({
-  confidence,
-}: {
-  confidence?: number | null;
-}) {
+function DuplicateBadge({ confidence }: { confidence?: number | null }) {
   return (
     <span
       title={
@@ -144,6 +137,7 @@ export function InvoiceTable({
   onToggleSelect,
   onToggleSelectAll,
   onViewInvoice,
+  onMatchInvoice,
   payLinkUrl,
 }: Props) {
   const allSelected =
@@ -151,6 +145,21 @@ export function InvoiceTable({
     invoices.every((invoice) => selectedIds.includes(invoice.id));
 
   const hasPayLink = Boolean(payLinkUrl);
+
+  function handleMatchInvoice(invoice: InvoiceRecord) {
+    if (onMatchInvoice) {
+      onMatchInvoice(invoice.id);
+      return;
+    }
+
+    window.alert(
+      `Match Invoice\n\nSupplier: ${invoice.supplier || "-"}\nInvoice: ${
+        invoice.invoice_number || "-"
+      }\nPO Number: ${
+        invoice.po_number || "-"
+      }\n\nAccounting software matching will be added in the next step.`
+    );
+  }
 
   return (
     <div className="rounded-3xl border border-blue-500/40 bg-white shadow-lg shadow-blue-500/10">
@@ -207,6 +216,8 @@ export function InvoiceTable({
               const needsAttention =
                 (invoice.review_status || "pending_review") ===
                 "needs_attention";
+              const canMatch =
+                (invoice.review_status || "pending_review") === "approved";
 
               const rowClassName = isActive
                 ? "bg-blue-50"
@@ -276,7 +287,6 @@ export function InvoiceTable({
                     title={invoice.po_number || "-"}
                   >
                     {invoice.po_number || "-"}
-                
                   </td>
 
                   <td className="whitespace-nowrap px-2 py-4 align-middle">
@@ -285,7 +295,9 @@ export function InvoiceTable({
 
                   <td className="whitespace-nowrap px-2 py-4 align-middle">
                     <div>{formatDateUK(invoice.due_date)}</div>
-                    <div className={`mt-1 text-[11px] font-medium ${dueSubtextClass}`}>
+                    <div
+                      className={`mt-1 text-[11px] font-medium ${dueSubtextClass}`}
+                    >
                       {dueInfo.label}
                     </div>
                   </td>
@@ -338,6 +350,20 @@ export function InvoiceTable({
                           Pay
                         </button>
                       )}
+
+                      <button
+                        type="button"
+                        onClick={() => handleMatchInvoice(invoice)}
+                        disabled={!canMatch}
+                        title={
+                          canMatch
+                            ? "Open matching options"
+                            : "Approve invoice to enable matching"
+                        }
+                        className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-[12px] font-medium text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400 disabled:opacity-70"
+                      >
+                        Match
+                      </button>
                     </div>
                   </td>
                 </tr>
