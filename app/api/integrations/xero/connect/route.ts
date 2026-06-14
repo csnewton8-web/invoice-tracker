@@ -25,11 +25,10 @@ export async function GET(req: NextRequest) {
       client_id: clientId,
       redirect_uri: redirectUri,
       scope: [
-        "offline_access",
-        "accounting.transactions",
-        "accounting.settings",
-        "accounting.attachments",
-      ].join(" "),
+  "offline_access",
+  "accounting.transactions",
+  "accounting.settings",
+].join(" "),
       state,
     });
 
