@@ -88,6 +88,7 @@ type AccountingIntegration = {
   provider: "xero" | "sage" | "quickbooks" | string;
   status: "connected" | "disconnected" | string;
   external_tenant_id?: string | null;
+  external_tenant_name?: string | null;
   connected_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
@@ -240,6 +241,7 @@ function MatchInvoiceModal({
   );
   const primaryIntegration = connectedIntegrations[0] || null;
   const connectedAt = formatConnectedAt(primaryIntegration?.connected_at);
+  const organisationName = primaryIntegration?.external_tenant_name || null;
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/70 px-4 backdrop-blur-sm">
@@ -326,6 +328,13 @@ function MatchInvoiceModal({
               <div className="text-sm font-semibold text-white">
                 ✓ {formatProviderName(primaryIntegration.provider)} connected
               </div>
+
+              {organisationName ? (
+                <p className="mt-2 text-sm text-emerald-100">
+                  Organisation: {organisationName}
+                </p>
+              ) : null}
+
               <p className="mt-2 text-sm leading-6 text-emerald-100">
                 This workspace is ready for accounting software matching. The
                 buttons below are placeholders until the provider integration is
@@ -341,7 +350,14 @@ function MatchInvoiceModal({
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
                 <button
                   type="button"
-                  onClick={() => onConnectProvider(formatProviderName(primaryIntegration.provider) as "Xero" | "Sage" | "QuickBooks")}
+                  onClick={() =>
+                    onConnectProvider(
+                      formatProviderName(primaryIntegration.provider) as
+                        | "Xero"
+                        | "Sage"
+                        | "QuickBooks"
+                    )
+                  }
                   className="rounded-2xl border border-emerald-400/30 bg-slate-950 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
                 >
                   View Matching PO
@@ -349,7 +365,14 @@ function MatchInvoiceModal({
 
                 <button
                   type="button"
-                  onClick={() => onConnectProvider(formatProviderName(primaryIntegration.provider) as "Xero" | "Sage" | "QuickBooks")}
+                  onClick={() =>
+                    onConnectProvider(
+                      formatProviderName(primaryIntegration.provider) as
+                        | "Xero"
+                        | "Sage"
+                        | "QuickBooks"
+                    )
+                  }
                   className="rounded-2xl border border-emerald-400/30 bg-slate-950 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
                 >
                   View Matching Bill
@@ -357,7 +380,14 @@ function MatchInvoiceModal({
 
                 <button
                   type="button"
-                  onClick={() => onConnectProvider(formatProviderName(primaryIntegration.provider) as "Xero" | "Sage" | "QuickBooks")}
+                  onClick={() =>
+                    onConnectProvider(
+                      formatProviderName(primaryIntegration.provider) as
+                        | "Xero"
+                        | "Sage"
+                        | "QuickBooks"
+                    )
+                  }
                   className="rounded-2xl border border-emerald-400/30 bg-slate-950 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-800"
                 >
                   Attach PDF to Bill
@@ -735,7 +765,9 @@ export function InvoiceWorkspace({
   }, [filteredAndSortedInvoices, currentPage, pageSize, totalPages]);
 
   const pageStart =
-    filteredAndSortedInvoices.length === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+    filteredAndSortedInvoices.length === 0
+      ? 0
+      : (currentPage - 1) * pageSize + 1;
   const pageEnd = Math.min(
     currentPage * pageSize,
     filteredAndSortedInvoices.length
@@ -917,56 +949,56 @@ export function InvoiceWorkspace({
   }
 
   async function handleConnectProvider(
-  provider: "Xero" | "Sage" | "QuickBooks"
-) {
-  if (provider !== "Xero") {
-    pushToast({
-      type: "info",
-      title: `${provider} integration coming soon`,
-      message:
-        "Xero is being connected first. Sage and QuickBooks will follow.",
-    });
-    return;
-  }
-
-  try {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    if (!session?.access_token) {
-      throw new Error("You must be logged in.");
+    provider: "Xero" | "Sage" | "QuickBooks"
+  ) {
+    if (provider !== "Xero") {
+      pushToast({
+        type: "info",
+        title: `${provider} integration coming soon`,
+        message:
+          "Xero is being connected first. Sage and QuickBooks will follow.",
+      });
+      return;
     }
 
-    const res = await fetch("/api/integrations/xero/connect", {
-      headers: {
-        Authorization: `Bearer ${session.access_token}`,
-      },
-    });
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-    if (!res.ok) {
+      if (!session?.access_token) {
+        throw new Error("You must be logged in.");
+      }
+
+      const res = await fetch("/api/integrations/xero/connect", {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (!res.ok) {
+        const body = await res.json();
+        throw new Error(body.error || "Failed to start Xero connection");
+      }
+
       const body = await res.json();
-      throw new Error(body.error || "Failed to start Xero connection");
+
+      if (!body.authUrl) {
+        throw new Error("Xero authorization URL was not returned.");
+      }
+
+      window.location.href = body.authUrl;
+    } catch (error) {
+      pushToast({
+        type: "error",
+        title: "Xero connection failed",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Could not start Xero connection.",
+      });
     }
-
-    const body = await res.json();
-
-if (!body.authUrl) {
-  throw new Error("Xero authorization URL was not returned.");
-}
-
-window.location.href = body.authUrl;
-  } catch (error) {
-    pushToast({
-      type: "error",
-      title: "Xero connection failed",
-      message:
-        error instanceof Error
-          ? error.message
-          : "Could not start Xero connection.",
-    });
   }
-}
 
   function toggleSelect(id: string) {
     setSelectedIds((prev) =>
@@ -1445,7 +1477,9 @@ window.location.href = body.authUrl;
 
                     <button
                       type="button"
-                      onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                      onClick={() =>
+                        setCurrentPage((page) => Math.max(1, page - 1))
+                      }
                       disabled={currentPage <= 1}
                       className="rounded-xl border border-slate-700 px-3 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-45"
                     >

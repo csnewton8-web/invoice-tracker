@@ -20,6 +20,7 @@ export async function GET(req: NextRequest) {
           provider,
           status,
           external_tenant_id,
+          external_tenant_name,
           connected_at,
           created_at,
           updated_at
