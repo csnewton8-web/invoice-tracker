@@ -94,16 +94,11 @@ function cleanPoNumber(value: unknown): string | null {
   if (!value) return null;
 
   const cleaned = String(value)
-    .replace(
-      /^(p\.?\s*o\.?|po|purchase\s+order|customer\s+po|your\s+ref(?:erence)?)\s*(no\.?|number|#)?\s*:?\s*/i,
-      ""
-    )
     .replace(/[.,;:)]+$/, "")
     .trim();
 
   if (!cleaned) return null;
-  if (cleaned.length > 40) return null;
-  if (!/[0-9]/.test(cleaned)) return null;
+  if (cleaned.length > 50) return null;
 
   return cleaned;
 }

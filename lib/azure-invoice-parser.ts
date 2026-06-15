@@ -123,9 +123,7 @@ function getCurrencyAmount(
 
   const content = field.content ? String(field.content) : "";
   const amountMatch = content.match(/([0-9,]+(?:\.[0-9]{1,2})?)/);
-  const amount = amountMatch
-    ? Number(amountMatch[1].replace(/,/g, ""))
-    : null;
+  const amount = amountMatch ? Number(amountMatch[1].replace(/,/g, "")) : null;
 
   let currency: string | null = null;
 
@@ -143,16 +141,11 @@ function cleanPoNumber(value: unknown): string | null {
   if (!value) return null;
 
   const cleaned = String(value)
-    .replace(
-      /^(p\.?\s*o\.?|po|purchase\s+order|customer\s+po|your\s+ref(?:erence)?)\s*(no\.?|number|#)?\s*:?\s*/i,
-      ""
-    )
     .replace(/[.,;:)]+$/, "")
     .trim();
 
   if (!cleaned) return null;
-  if (cleaned.length > 40) return null;
-  if (!/[0-9]/.test(cleaned)) return null;
+  if (cleaned.length > 50) return null;
 
   return cleaned;
 }
@@ -160,18 +153,31 @@ function cleanPoNumber(value: unknown): string | null {
 function extractPoNumberFromText(text?: string | null): string | null {
   if (!text) return null;
 
-  const patterns = [
-    /\bP\.?\s*O\.?\s*(?:No\.?|Number|#)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9\-\/_.]{2,})\b/i,
-    /\bPurchase\s+Order\s*(?:No\.?|Number|#)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9\-\/_.]{2,})\b/i,
-    /\bCustomer\s+PO\s*(?:No\.?|Number|#)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9\-\/_.]{2,})\b/i,
-    /\bYour\s+Ref(?:erence)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9\-\/_.]{2,})\b/i,
+  const labelledPatterns = [
+    /\bP\.?\s*O\.?\s*(?:No\.?|Number|#)?\s*[:\-]?\s*((?:PO[-\s]?)?[A-Z0-9][A-Z0-9\-\/_.]{2,})\b/i,
+    /\bPurchase\s+Order\s*(?:No\.?|Number|#)?\s*[:\-]?\s*((?:PO[-\s]?)?[A-Z0-9][A-Z0-9\-\/_.]{2,})\b/i,
+    /\bCustomer\s+PO\s*(?:No\.?|Number|#)?\s*[:\-]?\s*((?:PO[-\s]?)?[A-Z0-9][A-Z0-9\-\/_.]{2,})\b/i,
+    /\bYour\s+Ref(?:erence)?\s*[:\-]?\s*((?:PO[-\s]?)?[A-Z0-9][A-Z0-9\-\/_.]{2,})\b/i,
   ];
 
-  for (const pattern of patterns) {
+  for (const pattern of labelledPatterns) {
     const match = text.match(pattern);
+    const value = cleanPoNumber(match?.[1]);
 
-    if (match?.[1]) {
-      return cleanPoNumber(match[1]);
+    if (value) return value;
+  }
+
+  const standalonePoMatches = text.match(
+    /\bPO[-\s]?[A-Z0-9][A-Z0-9\-\/_.]{1,}\b/gi
+  );
+
+  if (standalonePoMatches?.length) {
+    const cleaned = standalonePoMatches
+      .map(cleanPoNumber)
+      .filter((value): value is string => Boolean(value));
+
+    if (cleaned.length) {
+      return cleaned[0];
     }
   }
 
