@@ -79,8 +79,10 @@ function hasUsefulFields(parsed: ParsedInvoice) {
   return Boolean(
     parsed.supplier ||
       parsed.invoice_number ||
+      parsed.po_number ||
       parsed.invoice_date ||
       parsed.due_date ||
+      parsed.payment_terms ||
       parsed.total != null ||
       parsed.currency
   );
@@ -97,6 +99,7 @@ function mergeParsedResults(
   return {
     supplier: first.supplier ?? second.supplier,
     invoice_number: first.invoice_number ?? second.invoice_number,
+    po_number: first.po_number ?? second.po_number,
     invoice_date: first.invoice_date ?? second.invoice_date,
     due_date: first.due_date ?? second.due_date,
     payment_terms: first.payment_terms ?? second.payment_terms,
@@ -173,7 +176,10 @@ function getHeaderValues(receivedEmail: any, headerName: string) {
   return values;
 }
 
-function getLikelyOriginalSenderFromBody(body: string, forwardingSenderEmail: string) {
+function getLikelyOriginalSenderFromBody(
+  body: string,
+  forwardingSenderEmail: string
+) {
   const patterns = [
     /(?:^|\n)\s*From:\s*(.+?)(?:\r?\n|$)/i,
     /(?:^|\n)\s*Original From:\s*(.+?)(?:\r?\n|$)/i,
@@ -184,11 +190,7 @@ function getLikelyOriginalSenderFromBody(body: string, forwardingSenderEmail: st
     const match = body.match(pattern);
     const email = extractEmailAddress(match?.[1]);
 
-    if (
-      email &&
-      email !== forwardingSenderEmail &&
-      email !== INBOUND_ADDRESS
-    ) {
+    if (email && email !== forwardingSenderEmail && email !== INBOUND_ADDRESS) {
       return email;
     }
   }
@@ -453,7 +455,11 @@ export async function POST(req: NextRequest) {
     const supabase = createAdminClient();
 
     if (!emailId) {
-      return jsonResponse({ success: true, ignored: true, reason: "missing_email_id" });
+      return jsonResponse({
+        success: true,
+        ignored: true,
+        reason: "missing_email_id",
+      });
     }
 
     if (!recipients.includes(INBOUND_ADDRESS)) {
@@ -474,7 +480,11 @@ export async function POST(req: NextRequest) {
         rejectionReason: "Missing sender email",
       });
 
-      return jsonResponse({ success: true, ignored: true, reason: "missing_sender" });
+      return jsonResponse({
+        success: true,
+        ignored: true,
+        reason: "missing_sender",
+      });
     }
 
     const receivedEmailDetails = await getReceivedEmailDetails(emailId);
@@ -636,7 +646,7 @@ export async function POST(req: NextRequest) {
         const { data: existingExactInvoice, error: exactDuplicateError } =
           await supabase
             .from("invoices")
-            .select("id, supplier, invoice_number, file_name")
+            .select("id, supplier, invoice_number, po_number, file_name")
             .eq("company_id", sender.company_id)
             .eq("user_id", sender.user_id)
             .eq("fingerprint", fingerprint)
@@ -717,6 +727,7 @@ export async function POST(req: NextRequest) {
           company_id: sender.company_id,
           supplier: parsed?.supplier ?? null,
           invoice_number: parsed?.invoice_number ?? null,
+          po_number: parsed?.po_number ?? null,
           invoice_date: parsed?.invoice_date ?? null,
           due_date: parsed?.due_date ?? null,
           payment_terms: parsed?.payment_terms ?? null,
@@ -804,6 +815,7 @@ export async function POST(req: NextRequest) {
           metadata: {
             supplier: invoice.supplier,
             invoice_number: invoice.invoice_number,
+            po_number: invoice.po_number,
             total: invoice.total,
             currency: invoice.currency,
             file_name: invoice.file_name,
@@ -857,6 +869,7 @@ export async function POST(req: NextRequest) {
         id: invoice.id,
         supplier: invoice.supplier,
         invoice_number: invoice.invoice_number,
+        po_number: invoice.po_number,
         total: invoice.total,
         currency: invoice.currency,
         duplicate_status: invoice.duplicate_status,

@@ -28,8 +28,10 @@ function hasUsefulFields(parsed: ParsedInvoice) {
   return Boolean(
     parsed.supplier ||
       parsed.invoice_number ||
+      parsed.po_number ||
       parsed.invoice_date ||
       parsed.due_date ||
+      parsed.payment_terms ||
       parsed.total != null ||
       parsed.currency
   );
@@ -46,6 +48,7 @@ function mergeParsedResults(
   return {
     supplier: first.supplier ?? second.supplier,
     invoice_number: first.invoice_number ?? second.invoice_number,
+    po_number: first.po_number ?? second.po_number,
     invoice_date: first.invoice_date ?? second.invoice_date,
     due_date: first.due_date ?? second.due_date,
     payment_terms: first.payment_terms ?? second.payment_terms,
@@ -188,7 +191,7 @@ export async function POST(req: NextRequest) {
     const { data: existingExactInvoice, error: exactDuplicateError } =
       await supabase
         .from("invoices")
-        .select("id, supplier, invoice_number, file_name")
+        .select("id, supplier, invoice_number, po_number, file_name")
         .eq("company_id", companyId)
         .eq("user_id", user.id)
         .eq("fingerprint", fingerprint)
@@ -223,7 +226,10 @@ export async function POST(req: NextRequest) {
 
     if (uploadError) {
       console.error("Invoice PDF upload failed:", uploadError);
-      return jsonError(`Could not upload invoice file: ${uploadError.message}`, 500);
+      return jsonError(
+        `Could not upload invoice file: ${uploadError.message}`,
+        500
+      );
     }
 
     const rawText = await extractPdfText(buffer);
@@ -271,6 +277,7 @@ export async function POST(req: NextRequest) {
       company_id: companyId,
       supplier: parsed?.supplier ?? null,
       invoice_number: parsed?.invoice_number ?? null,
+      po_number: parsed?.po_number ?? null,
       invoice_date: parsed?.invoice_date ?? null,
       due_date: parsed?.due_date ?? null,
       payment_terms: parsed?.payment_terms ?? null,
@@ -309,7 +316,10 @@ export async function POST(req: NextRequest) {
       }
 
       console.error("Invoice database insert failed:", insertError);
-      return jsonError(`Could not save invoice record: ${insertError.message}`, 500);
+      return jsonError(
+        `Could not save invoice record: ${insertError.message}`,
+        500
+      );
     }
 
     await createAuditLog({
@@ -322,6 +332,7 @@ export async function POST(req: NextRequest) {
       metadata: {
         supplier: data.supplier,
         invoice_number: data.invoice_number,
+        po_number: data.po_number,
         total: data.total,
         currency: data.currency,
         file_name: data.file_name,

@@ -4,6 +4,7 @@ import { toFile } from "openai/uploads";
 export type ParsedInvoice = {
   supplier: string | null;
   invoice_number: string | null;
+  po_number: string | null;
   invoice_date: string | null;
   due_date: string | null;
   payment_terms: string | null;
@@ -15,7 +16,11 @@ export type ParsedInvoice = {
 };
 
 function normaliseText(text: string) {
-  return text.replace(/\r/g, "\n").replace(/[ \t]+/g, " ").replace(/\n{2,}/g, "\n").trim();
+  return text
+    .replace(/\r/g, "\n")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{2,}/g, "\n")
+    .trim();
 }
 
 function normaliseDate(value: unknown): string | null {
@@ -85,6 +90,52 @@ function cleanInvoiceNumber(value: unknown): string | null {
   return cleaned;
 }
 
+function cleanPoNumber(value: unknown): string | null {
+  if (!value) return null;
+
+  const cleaned = String(value)
+    .replace(
+      /^(p\.?\s*o\.?|po|purchase\s+order|customer\s+po|your\s+ref(?:erence)?)\s*(no\.?|number|#)?\s*:?\s*/i,
+      ""
+    )
+    .replace(/[.,;:)]+$/, "")
+    .trim();
+
+  if (!cleaned) return null;
+  if (cleaned.length > 40) return null;
+  if (!/[0-9]/.test(cleaned)) return null;
+
+  return cleaned;
+}
+
+function calculateDueDateFromTerms(
+  invoiceDate: string | null,
+  paymentTerms: string | null
+): string | null {
+  if (!invoiceDate || !paymentTerms) return null;
+
+  const match =
+    paymentTerms.match(/\bnet\s*(\d{1,3})\b/i) ||
+    paymentTerms.match(/\bpayment\s+due\s+(\d{1,3})\s*days?\b/i) ||
+    paymentTerms.match(
+      /\b(\d{1,3})\s*days?\s*(?:from|after|following)?\s*(?:invoice|invoice date|date)?\b/i
+    );
+
+  if (!match?.[1]) return null;
+
+  const days = Number(match[1]);
+
+  if (!Number.isFinite(days) || days < 0 || days > 365) return null;
+
+  const date = new Date(`${invoiceDate}T00:00:00Z`);
+
+  if (Number.isNaN(date.getTime())) return null;
+
+  date.setUTCDate(date.getUTCDate() + days);
+
+  return date.toISOString().slice(0, 10);
+}
+
 function isValidDate(value: string | null) {
   if (!value) return false;
   const date = new Date(value);
@@ -102,28 +153,74 @@ function valueFromAliases(data: any, keys: string[]) {
   return null;
 }
 
-function coerceParsed(data: any, method: ParsedInvoice["extraction_method"]): ParsedInvoice {
+function coerceParsed(
+  data: any,
+  method: ParsedInvoice["extraction_method"]
+): ParsedInvoice {
   const invoiceNumber = cleanInvoiceNumber(
-    valueFromAliases(data, ["invoice_number", "invoiceNumber", "invoice_no", "invoiceNo", "invoice"])
+    valueFromAliases(data, [
+      "invoice_number",
+      "invoiceNumber",
+      "invoice_no",
+      "invoiceNo",
+      "invoice",
+    ])
+  );
+
+  const poNumber = cleanPoNumber(
+    valueFromAliases(data, [
+      "po_number",
+      "poNumber",
+      "po_no",
+      "poNo",
+      "po",
+      "purchase_order",
+      "purchaseOrder",
+      "purchase_order_number",
+      "purchaseOrderNumber",
+      "customer_po",
+      "customerPO",
+      "your_ref",
+      "yourRef",
+    ])
   );
 
   const invoiceDate = normaliseDate(
     valueFromAliases(data, ["invoice_date", "invoiceDate", "date"])
   );
 
-  const dueDate = normaliseDate(
-    valueFromAliases(data, ["due_date", "dueDate", "payment_due_date", "paymentDueDate", "payment_due"])
+  const paymentTerms =
+    valueFromAliases(data, ["payment_terms", "paymentTerms", "terms"]) ?? null;
+
+  const explicitDueDate = normaliseDate(
+    valueFromAliases(data, [
+      "due_date",
+      "dueDate",
+      "payment_due_date",
+      "paymentDueDate",
+      "payment_due",
+    ])
   );
+
+  const calculatedDueDate = calculateDueDateFromTerms(
+    isValidDate(invoiceDate) ? invoiceDate : null,
+    paymentTerms ? String(paymentTerms) : null
+  );
+
+  const dueDate = explicitDueDate || calculatedDueDate;
 
   const confidenceValue = valueFromAliases(data, ["confidence"]);
 
   return {
     supplier: valueFromAliases(data, ["supplier", "vendor", "issuer"]) ?? null,
     invoice_number: invoiceNumber,
+    po_number: poNumber,
     invoice_date: isValidDate(invoiceDate) ? invoiceDate : null,
     due_date: isValidDate(dueDate) ? dueDate : null,
-    payment_terms: valueFromAliases(data, ["payment_terms", "paymentTerms", "terms"]) ?? null,
-    total: parseAmount(valueFromAliases(data, ["total", "invoice_total", "amount_due", "total_due"])),
+    payment_terms: paymentTerms,
+    total: parseAmount(
+      valueFromAliases(data, ["total", "invoice_total", "amount_due", "total_due"])
+    ),
     currency: valueFromAliases(data, ["currency", "currency_code"])
       ? String(valueFromAliases(data, ["currency", "currency_code"])).toUpperCase()
       : null,
@@ -146,6 +243,7 @@ function mergeParsed(first: ParsedInvoice, second: ParsedInvoice): ParsedInvoice
   return {
     supplier: first.supplier ?? second.supplier,
     invoice_number: first.invoice_number ?? second.invoice_number,
+    po_number: first.po_number ?? second.po_number,
     invoice_date: first.invoice_date ?? second.invoice_date,
     due_date: first.due_date ?? second.due_date,
     payment_terms: first.payment_terms ?? second.payment_terms,
@@ -157,12 +255,16 @@ function mergeParsed(first: ParsedInvoice, second: ParsedInvoice): ParsedInvoice
   };
 }
 
-function mergeHeaderOverGeneral(header: ParsedInvoice, general: ParsedInvoice): ParsedInvoice {
+function mergeHeaderOverGeneral(
+  header: ParsedInvoice,
+  general: ParsedInvoice
+): ParsedInvoice {
   return {
     supplier: header.supplier ?? general.supplier,
     invoice_number: header.invoice_number,
+    po_number: header.po_number ?? general.po_number,
     invoice_date: header.invoice_date,
-    due_date: header.due_date,
+    due_date: header.due_date ?? general.due_date,
     payment_terms: header.payment_terms ?? general.payment_terms,
     total: header.total ?? general.total,
     currency: header.currency ?? general.currency,
@@ -187,13 +289,17 @@ function safeJsonParse(text: string) {
   }
 }
 
-export async function parseInvoice(text: string, fileName?: string): Promise<ParsedInvoice> {
+export async function parseInvoice(
+  text: string,
+  fileName?: string
+): Promise<ParsedInvoice> {
   const cleaned = normaliseText(text);
 
   if (!cleaned) {
     return {
       supplier: null,
       invoice_number: null,
+      po_number: null,
       invoice_date: null,
       due_date: null,
       payment_terms: null,
@@ -216,15 +322,17 @@ export async function parseInvoice(text: string, fileName?: string): Promise<Par
       input: `Extract invoice data from this invoice text.
 
 Return JSON only with keys:
-supplier, invoice_number, invoice_date, due_date, payment_terms, total, currency, confidence, notes.
+supplier, invoice_number, po_number, invoice_date, due_date, payment_terms, total, currency, confidence, notes.
 
 Rules:
 - Extract only from the current invoice text provided below.
 - Do not use examples, memory, previous invoices, or inferred values.
 - supplier is the invoice sender/issuer.
 - invoice_number is the value beside labels such as Invoice No, Invoice Number, Invoice #, Inv No, Bill No, Tax Invoice No.
+- po_number is the visible purchase order reference beside labels such as PO No, PO No., PO#, P/O No, P.O. No, Purchase Order No, Purchase Order Number, Customer PO, Your Ref.
 - invoice_date is the value beside labels such as Invoice Date, Date, Tax Date.
 - due_date is the value beside labels such as Due Date, Payment Due Date, Payment due date.
+- If due_date is not shown but payment terms say things like Net 30, 30 days, payment due 30 days from invoice date, return payment_terms and calculate due_date from invoice_date.
 - total is the final amount payable including VAT/tax where present.
 - currency must be a 3-letter ISO code.
 - dates must be YYYY-MM-DD.
@@ -244,6 +352,7 @@ ${cleaned.slice(0, 12000)}`,
     return {
       supplier: null,
       invoice_number: null,
+      po_number: null,
       invoice_date: null,
       due_date: null,
       payment_terms: null,
@@ -263,6 +372,7 @@ export async function parseInvoiceFromPdf(
   const emptyResult: ParsedInvoice = {
     supplier: null,
     invoice_number: null,
+    po_number: null,
     invoice_date: null,
     due_date: null,
     payment_terms: null,
@@ -314,7 +424,7 @@ export async function parseInvoiceFromPdf(
     const generalPrompt = `Extract invoice data from the uploaded invoice PDF.
 
 Return JSON only with keys:
-supplier, invoice_number, invoice_date, due_date, payment_terms, total, currency, confidence, notes.
+supplier, invoice_number, po_number, invoice_date, due_date, payment_terms, total, currency, confidence, notes.
 
 Rules:
 - Extract only from the uploaded PDF.
@@ -322,8 +432,10 @@ Rules:
 - Do not copy values from any prompt text.
 - supplier is the invoice sender/issuer.
 - invoice_number is the visible value beside labels such as Invoice No, Invoice Number, Invoice #, Inv No, Bill No, Tax Invoice No.
+- po_number is the visible purchase order reference beside labels such as PO No, PO No., PO#, P/O No, P.O. No, Purchase Order No, Purchase Order Number, Customer PO, Your Ref.
 - invoice_date is the visible value beside labels such as Invoice Date, Date, Tax Date.
 - due_date is the visible value beside labels such as Due Date, Payment Due Date, Payment due date.
+- If due_date is not shown but payment terms say things like Net 30, 30 days, payment due 30 days from invoice date, return payment_terms and calculate due_date from invoice_date.
 - total is the final payable amount including VAT/tax where present.
 - currency must be a 3-letter ISO code.
 - dates must be YYYY-MM-DD.
@@ -335,7 +447,7 @@ File name: ${fileName || "unknown"}`;
     const headerPrompt = `Extract only the labelled invoice identifier and date fields from the uploaded PDF.
 
 Return JSON only with keys:
-supplier, invoice_number, invoice_date, due_date, payment_terms, total, currency, confidence, notes.
+supplier, invoice_number, po_number, invoice_date, due_date, payment_terms, total, currency, confidence, notes.
 
 Rules:
 - Extract only from the uploaded PDF.
@@ -344,9 +456,11 @@ Rules:
 - Do not copy dates or numbers from this prompt.
 - Find the main invoice details/header area.
 - invoice_number must be the visible value beside a label such as Invoice No, Invoice Number, Invoice #, Inv No, Bill No, Tax Invoice No.
+- po_number is the visible purchase order reference beside labels such as PO No, PO No., PO#, P/O No, P.O. No, Purchase Order No, Purchase Order Number, Customer PO, Your Ref.
 - invoice_date must be the visible value beside a label such as Invoice Date, Date, Tax Date.
 - due_date must be the visible value beside a label such as Due Date, Payment Due Date, Payment due date.
-- Do not use footer references, issue numbers, VAT numbers, account numbers, bank details, sort codes, delivery numbers, order numbers, job numbers, PO numbers, or page numbers.
+- If due_date is not shown but payment terms say things like Net 30, 30 days, payment due 30 days from invoice date, return payment_terms and calculate due_date from invoice_date.
+- Do not use footer references, issue numbers, VAT numbers, account numbers, bank details, sort codes, delivery numbers, job numbers, page numbers, or invoice number values as the PO number.
 - Return dates as YYYY-MM-DD.
 - Use null only if the field is not visible.
 - Include supplier, total and currency if clearly visible, otherwise null.

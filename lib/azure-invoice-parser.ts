@@ -8,6 +8,7 @@ function emptyAzureResult(notes: string[] = []): ParsedInvoice {
   return {
     supplier: null,
     invoice_number: null,
+    po_number: null,
     invoice_date: null,
     due_date: null,
     payment_terms: null,
@@ -138,6 +139,73 @@ function getCurrencyAmount(
   };
 }
 
+function cleanPoNumber(value: unknown): string | null {
+  if (!value) return null;
+
+  const cleaned = String(value)
+    .replace(
+      /^(p\.?\s*o\.?|po|purchase\s+order|customer\s+po|your\s+ref(?:erence)?)\s*(no\.?|number|#)?\s*:?\s*/i,
+      ""
+    )
+    .replace(/[.,;:)]+$/, "")
+    .trim();
+
+  if (!cleaned) return null;
+  if (cleaned.length > 40) return null;
+  if (!/[0-9]/.test(cleaned)) return null;
+
+  return cleaned;
+}
+
+function extractPoNumberFromText(text?: string | null): string | null {
+  if (!text) return null;
+
+  const patterns = [
+    /\bP\.?\s*O\.?\s*(?:No\.?|Number|#)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9\-\/_.]{2,})\b/i,
+    /\bPurchase\s+Order\s*(?:No\.?|Number|#)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9\-\/_.]{2,})\b/i,
+    /\bCustomer\s+PO\s*(?:No\.?|Number|#)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9\-\/_.]{2,})\b/i,
+    /\bYour\s+Ref(?:erence)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9\-\/_.]{2,})\b/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+
+    if (match?.[1]) {
+      return cleanPoNumber(match[1]);
+    }
+  }
+
+  return null;
+}
+
+function calculateDueDateFromTerms(
+  invoiceDate: string | null,
+  paymentTerms: string | null
+): string | null {
+  if (!invoiceDate || !paymentTerms) return null;
+
+  const match =
+    paymentTerms.match(/\bnet\s*(\d{1,3})\b/i) ||
+    paymentTerms.match(/\bpayment\s+due\s+(\d{1,3})\s*days?\b/i) ||
+    paymentTerms.match(
+      /\b(\d{1,3})\s*days?\s*(?:from|after|following)?\s*(?:invoice|invoice date|date)?\b/i
+    );
+
+  if (!match?.[1]) return null;
+
+  const days = Number(match[1]);
+
+  if (!Number.isFinite(days) || days < 0 || days > 365) return null;
+
+  const date = new Date(`${invoiceDate}T00:00:00Z`);
+
+  if (Number.isNaN(date.getTime())) return null;
+
+  date.setUTCDate(date.getUTCDate() + days);
+
+  return date.toISOString().slice(0, 10);
+}
+
 function averageConfidence(fields: Array<any | null>) {
   const scores = fields
     .map((field) => field?.confidence)
@@ -202,31 +270,77 @@ export async function parseInvoiceWithAzure(
       "InvoiceNo",
     ]);
 
+    const poField = getField(fields, [
+      "PurchaseOrder",
+      "PurchaseOrderNumber",
+      "PurchaseOrderNo",
+      "PONumber",
+      "PO",
+      "CustomerPO",
+    ]);
+
+    const poNumber =
+      cleanPoNumber(
+        getFieldText(fields, [
+          "PurchaseOrder",
+          "PurchaseOrderNumber",
+          "PurchaseOrderNo",
+          "PONumber",
+          "PO",
+          "CustomerPO",
+        ])
+      ) || extractPoNumberFromText(result.content || null);
+
     const invoiceDate = getFieldDate(fields, ["InvoiceDate"]);
-    const dueDate = getFieldDate(fields, ["DueDate", "PaymentDueDate"]);
+
+    const paymentTerms = getFieldText(fields, [
+      "PaymentTerm",
+      "PaymentTerms",
+      "Terms",
+    ]);
+
+    const explicitDueDate = getFieldDate(fields, [
+      "DueDate",
+      "PaymentDueDate",
+    ]);
+
+    const dueDate =
+      explicitDueDate || calculateDueDateFromTerms(invoiceDate, paymentTerms);
 
     const currency =
       totalResult.currency ||
       getFieldText(fields, ["Currency", "CurrencyCode"])?.toUpperCase() ||
       null;
 
+    const notes = [`Azure invoice extraction used for ${fileName || "invoice"}`];
+
+    if (!explicitDueDate && dueDate && paymentTerms) {
+      notes.push(`Due date calculated from payment terms: ${paymentTerms}`);
+    }
+
+    if (poNumber && !poField) {
+      notes.push("PO number extracted from invoice text pattern matching");
+    }
+
     return {
       supplier,
       invoice_number: invoiceNumber,
+      po_number: poNumber,
       invoice_date: invoiceDate,
       due_date: dueDate,
-      payment_terms: getFieldText(fields, ["PaymentTerm", "PaymentTerms"]),
+      payment_terms: paymentTerms,
       total: totalResult.amount,
       currency,
       confidence: averageConfidence([
         getField(fields, ["VendorName", "SupplierName", "MerchantName"]),
         getField(fields, ["InvoiceId", "InvoiceNumber", "InvoiceNo"]),
+        poField,
         getField(fields, ["InvoiceDate"]),
         getField(fields, ["DueDate", "PaymentDueDate"]),
         totalField,
       ]),
       extraction_method: "azure-invoice",
-      notes: [`Azure invoice extraction used for ${fileName || "invoice"}`],
+      notes,
     };
   } catch (error: any) {
     console.warn("Azure invoice parse failed:", error);
