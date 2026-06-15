@@ -69,12 +69,12 @@ export async function rateLimit({
   windowMs: number;
 }): Promise<RateLimitResult> {
   if (!redis) {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error("Upstash Redis is not configured");
-    }
+  console.warn(
+    "Upstash Redis is not configured. Falling back to local rate limiting."
+  );
 
-    return localRateLimit({ key, limit, windowMs });
-  }
+  return localRateLimit({ key, limit, windowMs });
+}
 
   const redisKey = `rate-limit:${key}`;
   const count = await redis.incr(redisKey);
