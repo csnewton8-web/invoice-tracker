@@ -18,8 +18,7 @@ function LoginContent() {
 
   const redirect = searchParams.get("redirect");
   const isInviteLogin = Boolean(redirect?.startsWith("/invite/accept"));
-
-  const nextPath = redirect || "/onboarding";
+  const nextPath = redirect || "/dashboard";
 
   async function bootstrapCompany(accessToken: string) {
     const res = await fetch("/api/companies/bootstrap", {
@@ -36,6 +35,23 @@ function LoginContent() {
     }
 
     return body;
+  }
+
+  async function getPostLoginDestination(accessToken: string) {
+    const res = await fetch("/api/auth/post-login-destination", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      cache: "no-store",
+    });
+
+    const body = await res.json();
+
+    if (!res.ok) {
+      throw new Error(body.error || "Failed to decide login destination");
+    }
+
+    return body.destination || "/dashboard";
   }
 
   async function handleLogin(e: React.FormEvent) {
@@ -66,6 +82,12 @@ function LoginContent() {
 
       if (!isInviteLogin) {
         await bootstrapCompany(accessToken);
+
+        const destination = redirect || (await getPostLoginDestination(accessToken));
+
+        router.push(destination);
+        router.refresh();
+        return;
       }
 
       router.push(nextPath);

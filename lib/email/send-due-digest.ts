@@ -70,11 +70,13 @@ function dueLabel(value: string | null) {
   const days = daysUntilDue(value);
 
   if (days == null) return "Due date unavailable";
+
   if (days < 0) {
     return `Overdue by ${Math.abs(days)} day${
       Math.abs(days) === 1 ? "" : "s"
     }`;
   }
+
   if (days === 0) return "Due today";
   if (days === 1) return "Due tomorrow";
 
@@ -119,10 +121,37 @@ function buttonHtml(
   const background = variant === "primary" ? "#2563eb" : "#0f172a";
 
   return `
-    <a href="${escapeHtml(href)}"
-      style="display:inline-block;background:${background};color:#ffffff;text-decoration:none;font-size:13px;font-weight:700;padding:10px 14px;border-radius:10px;margin-right:8px;margin-top:10px;">
-      ${escapeHtml(label)}
-    </a>
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="display:inline-table;margin:10px 8px 0 0;border-collapse:separate;mso-table-lspace:0pt;mso-table-rspace:0pt;">
+      <tr>
+        <td bgcolor="${background}" style="background:${background};padding:11px 16px;border-radius:10px;">
+          <a href="${escapeHtml(href)}" target="_blank" style="font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:bold;color:#ffffff;text-decoration:none;display:block;line-height:16px;">
+            ${escapeHtml(label)}
+          </a>
+        </td>
+      </tr>
+    </table>
+  `;
+}
+
+function summaryBoxHtml(
+  count: number,
+  label: string,
+  value: string,
+  background: string,
+  color: string
+) {
+  return `
+    <td width="33.33%" valign="top" style="width:33.33%;padding:8px;">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="${background}" style="width:100%;background:${background};border-collapse:separate;border-radius:14px;mso-table-lspace:0pt;mso-table-rspace:0pt;">
+        <tr>
+          <td align="center" style="padding:18px 12px;font-family:Arial,Helvetica,sans-serif;text-align:center;">
+            <div style="font-size:24px;font-weight:900;line-height:30px;color:${color};">${count}</div>
+            <div style="font-size:12px;font-weight:800;line-height:16px;color:${color};text-transform:uppercase;letter-spacing:.04em;">${escapeHtml(label)}</div>
+            <div style="font-size:12px;line-height:16px;color:${color};margin-top:5px;">${escapeHtml(value)}</div>
+          </td>
+        </tr>
+      </table>
+    </td>
   `;
 }
 
@@ -166,38 +195,51 @@ function invoiceCardHtml(
           : "#334155";
 
   return `
-    <div style="border:1px solid ${borderColor};border-radius:16px;padding:18px;margin:0 0 14px;background:#ffffff;">
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
-        <tr>
-          <td style="vertical-align:top;padding-right:12px;">
-            <div style="font-size:16px;font-weight:800;color:#0f172a;margin-bottom:4px;">${supplier}</div>
-            <div style="font-size:13px;color:#475569;line-height:1.5;">
-              Invoice #${invoiceNumber}<br />
-              Due date: ${dueDate}
-            </div>
-          </td>
-          <td style="vertical-align:top;text-align:right;white-space:nowrap;">
-            <div style="font-size:17px;font-weight:800;color:#0f172a;margin-bottom:8px;">${amount}</div>
-            <span style="display:inline-block;background:${badgeBackground};color:${badgeColor};font-size:12px;font-weight:800;padding:6px 9px;border-radius:999px;">
-              ${dueStatus}
-            </span>
-          </td>
-        </tr>
-      </table>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#ffffff;border:1px solid ${borderColor};border-radius:16px;border-collapse:separate;margin:0 0 14px 0;mso-table-lspace:0pt;mso-table-rspace:0pt;">
+      <tr>
+        <td style="padding:18px 22px;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse;mso-table-lspace:0pt;mso-table-rspace:0pt;">
+            <tr>
+              <td valign="top" style="vertical-align:top;padding:0 12px 0 0;">
+                <div style="font-size:16px;font-weight:800;line-height:21px;color:#0f172a;margin:0 0 4px 0;">${supplier}</div>
+                <div style="font-size:13px;line-height:20px;color:#475569;margin:0;">
+                  Invoice #${invoiceNumber}<br />
+                  Due date: ${dueDate}
+                </div>
+              </td>
 
-      <div style="margin-top:4px;">
-        ${
-          viewUrl
-            ? buttonHtml("View invoice", viewUrl, "secondary")
-            : `<span style="display:inline-block;font-size:12px;color:#64748b;margin-top:12px;margin-right:12px;">View link unavailable</span>`
-        }
-        ${
-          payLinkUrl
-            ? buttonHtml("Pay now", payLinkUrl, "primary")
-            : `<span style="display:inline-block;font-size:12px;color:#64748b;margin-top:12px;">Payment link not set</span>`
-        }
-      </div>
-    </div>
+              <td width="190" valign="top" align="right" style="width:190px;vertical-align:top;text-align:right;">
+                <div style="font-size:17px;font-weight:800;line-height:22px;color:#0f172a;margin:0 0 10px 0;white-space:nowrap;">${amount}</div>
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="right" bgcolor="${badgeBackground}" style="background:${badgeBackground};border-collapse:separate;border-radius:999px;mso-table-lspace:0pt;mso-table-rspace:0pt;">
+                  <tr>
+                    <td style="padding:7px 11px;font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:800;line-height:14px;color:${badgeColor};white-space:nowrap;">
+                      ${dueStatus}
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse;margin-top:8px;mso-table-lspace:0pt;mso-table-rspace:0pt;">
+            <tr>
+              <td>
+                ${
+                  viewUrl
+                    ? buttonHtml("View invoice", viewUrl, "secondary")
+                    : `<span style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:16px;color:#64748b;margin-top:12px;margin-right:12px;">View link unavailable</span>`
+                }
+                ${
+                  payLinkUrl
+                    ? buttonHtml("Pay now", payLinkUrl, "primary")
+                    : `<span style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:16px;color:#64748b;margin-top:12px;">Payment link not set</span>`
+                }
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
   `;
 }
 
@@ -210,12 +252,16 @@ function sectionHtml(
   if (!items.length) return "";
 
   return `
-    <div style="margin-top:28px;">
-      <h2 style="margin:0 0 14px;font-size:20px;line-height:1.3;color:#0f172a;">
-        ${escapeHtml(title)} (${items.length})
-      </h2>
-      ${items.map((item) => invoiceCardHtml(item, tone, payLinkUrl)).join("")}
-    </div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse;margin-top:28px;mso-table-lspace:0pt;mso-table-rspace:0pt;">
+      <tr>
+        <td style="font-family:Arial,Helvetica,sans-serif;padding:0;">
+          <h2 style="margin:0 0 14px 0;font-family:Arial,Helvetica,sans-serif;font-size:20px;line-height:26px;color:#0f172a;font-weight:800;">
+            ${escapeHtml(title)} (${items.length})
+          </h2>
+          ${items.map((item) => invoiceCardHtml(item, tone, payLinkUrl)).join("")}
+        </td>
+      </tr>
+    </table>
   `;
 }
 
@@ -273,110 +319,116 @@ export async function sendDueDigest({
 
   const html = `
     <div style="margin:0;padding:0;background:#f8fafc;">
-      <div style="font-family:Arial,Helvetica,sans-serif;max-width:760px;margin:0 auto;padding:28px 18px;color:#0f172a;">
-        <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:22px;overflow:hidden;">
-          <div style="padding:26px 28px;background:#0f172a;color:#ffffff;">
-            <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 20px;">
-  <tr>
-    <td style="vertical-align:middle;padding-right:14px;">
-      <img
-        src="https://invoice-tracker-lake-nine.vercel.app/logo/flashfox-icon.png"
-        alt="FlashFox"
-        width="68"
-        height="68"
-        style="display:block;width:68px;height:68px;"
-      />
-    </td>
-    <td style="vertical-align:middle;">
-      <div style="font-size:32px;font-weight:900;line-height:1;color:#ffffff;">
-        Flash<span style="color:#60a5fa;">Fox</span>
-      </div>
-      <div style="font-size:12px;font-weight:700;letter-spacing:0.18em;color:#fb923c;text-transform:uppercase;margin-top:8px;">
-        Fast. Smart. On Time.
-      </div>
-    </td>
-  </tr>
-</table>
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#f8fafc" style="width:100%;background:#f8fafc;border-collapse:collapse;mso-table-lspace:0pt;mso-table-rspace:0pt;">
+        <tr>
+          <td align="center" style="padding:28px 18px;">
 
-            <h1 style="font-size:28px;line-height:1.2;margin:0 0 10px;color:#ffffff;">
-              Invoice payment digest
-            </h1>
-
-            <p style="font-size:15px;line-height:1.6;color:#cbd5e1;margin:0;">
-              Daily summary for <strong style="color:#ffffff;">${safeCompanyName}</strong>
-            </p>
-          </div>
-
-          <div style="padding:24px 28px;">
-            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin-bottom:22px;">
+            <table role="presentation" width="760" cellspacing="0" cellpadding="0" border="0" align="center" style="width:760px;max-width:760px;background:#ffffff;border:1px solid #e2e8f0;border-radius:22px;border-collapse:separate;overflow:hidden;mso-table-lspace:0pt;mso-table-rspace:0pt;">
               <tr>
-                <td style="width:33.33%;padding:8px;">
-                  <div style="background:#fee2e2;border-radius:14px;padding:14px;text-align:center;">
-                    <div style="font-size:24px;font-weight:900;color:#991b1b;">${overdue.length}</div>
-                    <div style="font-size:12px;font-weight:800;color:#991b1b;text-transform:uppercase;letter-spacing:.04em;">Overdue</div>
-                    <div style="font-size:12px;color:#991b1b;margin-top:4px;">${escapeHtml(
-                      formatMoney(summaryCurrency, totalValue(overdue))
-                    )}</div>
-                  </div>
+                <td align="left" bgcolor="#0f172a" style="padding:26px 28px;background:#0f172a;color:#ffffff;font-family:Arial,Helvetica,sans-serif;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 22px 0;mso-table-lspace:0pt;mso-table-rspace:0pt;">
+                    <tr>
+                      <td valign="middle" style="vertical-align:middle;padding:0 16px 0 0;">
+                        <img src="https://invoice-tracker-lake-nine.vercel.app/logo/flashfox-icon.png" alt="FlashFox" width="68" height="68" border="0" style="display:block;width:68px;height:68px;border:0;outline:none;text-decoration:none;-ms-interpolation-mode:bicubic;" />
+                      </td>
+                      <td valign="middle" style="vertical-align:middle;font-family:Arial,Helvetica,sans-serif;">
+                        <div style="font-size:32px;font-weight:900;line-height:34px;color:#ffffff;margin:0;">
+                          Flash<span style="color:#60a5fa;">Fox</span>
+                        </div>
+                        <div style="font-size:12px;font-weight:700;line-height:16px;letter-spacing:0.18em;color:#fb923c;text-transform:uppercase;margin-top:8px;">
+                          Fast. Smart. On Time.
+                        </div>
+                      </td>
+                    </tr>
+                  </table>
+
+                  <h1 style="font-family:Arial,Helvetica,sans-serif;font-size:28px;line-height:34px;margin:0 0 10px 0;color:#ffffff;font-weight:800;">
+                    Invoice payment digest
+                  </h1>
+
+                  <p style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#cbd5e1;margin:0;">
+                    Daily summary for <strong style="color:#ffffff;">${safeCompanyName}</strong>
+                  </p>
                 </td>
-                <td style="width:33.33%;padding:8px;">
-                  <div style="background:#fef3c7;border-radius:14px;padding:14px;text-align:center;">
-                    <div style="font-size:24px;font-weight:900;color:#92400e;">${dueToday.length}</div>
-                    <div style="font-size:12px;font-weight:800;color:#92400e;text-transform:uppercase;letter-spacing:.04em;">Due today</div>
-                    <div style="font-size:12px;color:#92400e;margin-top:4px;">${escapeHtml(
-                      formatMoney(summaryCurrency, totalValue(dueToday))
-                    )}</div>
-                  </div>
-                </td>
-                <td style="width:33.33%;padding:8px;">
-                  <div style="background:#dbeafe;border-radius:14px;padding:14px;text-align:center;">
-                    <div style="font-size:24px;font-weight:900;color:#1e40af;">${thisWeekItems.length}</div>
-                    <div style="font-size:12px;font-weight:800;color:#1e40af;text-transform:uppercase;letter-spacing:.04em;">Due this week</div>
-                    <div style="font-size:12px;color:#1e40af;margin-top:4px;">${escapeHtml(
-                      formatMoney(summaryCurrency, totalValue(thisWeekItems))
-                    )}</div>
-                  </div>
+              </tr>
+
+              <tr>
+                <td style="padding:24px 28px 30px 28px;font-family:Arial,Helvetica,sans-serif;color:#0f172a;background:#ffffff;">
+                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse;margin:0 0 22px 0;mso-table-lspace:0pt;mso-table-rspace:0pt;">
+                    <tr>
+                      ${summaryBoxHtml(
+                        overdue.length,
+                        "Overdue",
+                        formatMoney(summaryCurrency, totalValue(overdue)),
+                        "#fee2e2",
+                        "#991b1b"
+                      )}
+                      ${summaryBoxHtml(
+                        dueToday.length,
+                        "Due today",
+                        formatMoney(summaryCurrency, totalValue(dueToday)),
+                        "#fef3c7",
+                        "#92400e"
+                      )}
+                      ${summaryBoxHtml(
+                        thisWeekItems.length,
+                        "Due this week",
+                        formatMoney(summaryCurrency, totalValue(thisWeekItems)),
+                        "#dbeafe",
+                        "#1e40af"
+                      )}
+                    </tr>
+                  </table>
+
+                  <p style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:24px;color:#475569;margin:0 0 22px 0;">
+                    Use <strong>View invoice</strong> to open the invoice in FlashFox, or <strong>Pay now</strong> to open your saved payment link.
+                  </p>
+
+                  ${sectionHtml("Overdue", overdue, "danger", payLinkUrl)}
+                  ${sectionHtml("Due today", dueToday, "warning", payLinkUrl)}
+                  ${sectionHtml("Due this week", thisWeekItems, "info", payLinkUrl)}
+                  ${sectionHtml("Due this month", dueThisMonth, "info", payLinkUrl)}
+                  ${sectionHtml("Due next month", dueNextMonth, "neutral", payLinkUrl)}
+                  ${sectionHtml("Due later", dueLater, "neutral", payLinkUrl)}
+
+                  ${
+                    dashboardUrl
+                      ? `
+                        <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="border-collapse:separate;margin:30px auto 0 auto;mso-table-lspace:0pt;mso-table-rspace:0pt;">
+                          <tr>
+                            <td align="center">
+                              ${buttonHtml("Open FlashFox dashboard", dashboardUrl, "primary")}
+                            </td>
+                          </tr>
+                        </table>
+                      `
+                      : ""
+                  }
+
+                  <p style="margin:30px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:19px;color:#64748b;text-align:center;">
+                    This email was sent automatically by FlashFox.
+                  </p>
                 </td>
               </tr>
             </table>
 
-            <p style="font-size:15px;line-height:1.6;color:#475569;margin:0 0 22px;">
-              Use <strong>View invoice</strong> to open the invoice in FlashFox, or <strong>Pay now</strong> to open your saved payment link.
-            </p>
-
-            ${sectionHtml("Overdue", overdue, "danger", payLinkUrl)}
-            ${sectionHtml("Due today", dueToday, "warning", payLinkUrl)}
-            ${sectionHtml("Due this week", thisWeekItems, "info", payLinkUrl)}
-            ${sectionHtml("Due this month", dueThisMonth, "info", payLinkUrl)}
-            ${sectionHtml("Due next month", dueNextMonth, "neutral", payLinkUrl)}
-            ${sectionHtml("Due later", dueLater, "neutral", payLinkUrl)}
-
-            ${
-              dashboardUrl
-                ? `
-                  <div style="text-align:center;margin-top:30px;">
-                    <a href="${escapeHtml(dashboardUrl)}"
-                      style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;font-size:15px;font-weight:800;padding:13px 18px;border-radius:12px;">
-                      Open FlashFox dashboard
-                    </a>
-                  </div>
-                `
-                : ""
-            }
-
-            <p style="margin:30px 0 0;font-size:12px;line-height:1.6;color:#64748b;text-align:center;">
-              This email was sent automatically by FlashFox.
-            </p>
-          </div>
-        </div>
-      </div>
+          </td>
+        </tr>
+      </table>
     </div>
   `;
 
-  await resendClient.emails.send({
+  const result = await resendClient.emails.send({
     from,
     to: cleanRecipients,
     subject,
     html,
   });
+
+  console.log("Resend email result:", result);
+
+  if (result.error) {
+    console.error("Resend email error:", result.error);
+    throw new Error(result.error.message);
+  }
 }

@@ -31,6 +31,25 @@ export async function requireCurrentCompany(req: NextRequest) {
     throw new HttpError(403, "No active company found for this user");
   }
 
+  const { data: company, error: companyError } = await supabase
+    .from("companies")
+    .select("id, is_active, deleted_at")
+    .eq("id", membership.company_id)
+    .maybeSingle();
+
+  if (companyError) {
+    console.error("Failed to load current company:", companyError);
+    throw new HttpError(500, "Could not load company account");
+  }
+
+  if (!company) {
+    throw new HttpError(403, "Company account not found");
+  }
+
+  if (!company.is_active || company.deleted_at) {
+    throw new HttpError(403, "This company account is inactive");
+  }
+
   const role = normalizeCompanyRole(membership.role);
 
   return {
@@ -52,7 +71,6 @@ export function normalizeCompanyRole(role: unknown): CompanyRole {
     return role;
   }
 
-  // Backwards compatibility for your older role naming.
   if (role === "finance") {
     return "member";
   }

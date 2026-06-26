@@ -79,7 +79,7 @@ export default function OnboardingPage() {
       const token = await getAccessToken();
 
       if (!token) {
-        router.push("/login?next=/onboarding");
+        router.push("/login?redirect=/onboarding");
         return;
       }
 
@@ -125,7 +125,7 @@ export default function OnboardingPage() {
     const token = await getAccessToken();
 
     if (!token) {
-      router.push("/login?next=/onboarding");
+      router.push("/login?redirect=/onboarding");
       return;
     }
 
@@ -162,7 +162,7 @@ export default function OnboardingPage() {
       const token = await getAccessToken();
 
       if (!token) {
-        router.push("/login?next=/onboarding");
+        router.push("/login?redirect=/onboarding");
         return;
       }
 
@@ -321,7 +321,7 @@ export default function OnboardingPage() {
                 const token = await getAccessToken();
 
                 if (!token) {
-                  router.push("/login?next=/onboarding");
+                  router.push("/login?redirect=/onboarding");
                   return;
                 }
 

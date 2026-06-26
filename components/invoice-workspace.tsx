@@ -1294,10 +1294,142 @@ export function InvoiceWorkspace({
 
         <div className={layoutClassName}>
           {showFilters ? (
-            <aside className="space-y-4">
-              {/* your existing filters block is unchanged */}
-            </aside>
-          ) : null}
+  <aside className="space-y-4">
+    <div className="overflow-hidden rounded-[28px] border border-slate-800 bg-slate-900 shadow-2xl shadow-black/10">
+      <div className="border-b border-slate-800 px-5 py-4">
+        <div className="text-base font-semibold text-white">
+          Sort & Filters
+        </div>
+        <div className="mt-1 text-sm text-slate-400">
+          Refine the invoice list and export the results.
+        </div>
+      </div>
+
+      <div className="space-y-4 p-5">
+        <div>
+          <label className="mb-2 block text-sm font-medium text-slate-300">
+            Search
+          </label>
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Supplier, invoice, PO..."
+            className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-blue-500"
+          />
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-medium text-slate-300">
+            Supplier
+          </label>
+          <select
+            value={supplierFilter}
+            onChange={(e) => setSupplierFilter(e.target.value)}
+            className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none"
+          >
+            <option value="all">All suppliers</option>
+            {supplierOptions.map((supplier) => (
+              <option key={supplier} value={supplier}>
+                {supplier}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-medium text-slate-300">
+            Payment Status
+          </label>
+          <select
+            value={paymentStatusFilter}
+            onChange={(e) => setPaymentStatusFilter(e.target.value)}
+            className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none"
+          >
+            <option value="all">All invoices</option>
+            <option value="paid">Paid</option>
+            <option value="unpaid">Unpaid</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-medium text-slate-300">
+            Currency
+          </label>
+          <select
+            value={currencyFilter}
+            onChange={(e) => setCurrencyFilter(e.target.value)}
+            className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none"
+          >
+            <option value="all">All currencies</option>
+            {currencyOptions.map((currency) => (
+              <option key={currency} value={currency}>
+                {currency}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-medium text-slate-300">
+            Due Status
+          </label>
+          <select
+            value={dueStatusFilter}
+            onChange={(e) => setDueStatusFilter(e.target.value)}
+            className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none"
+          >
+            <option value="all">All due statuses</option>
+            <option value="overdue">Overdue</option>
+            <option value="due">Due today</option>
+            <option value="future">Future</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-medium text-slate-300">
+            Sort By
+          </label>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white outline-none"
+          >
+            <option value="due_date_old_to_new">
+              Due date (oldest first)
+            </option>
+            <option value="due_date_new_to_old">
+              Due date (newest first)
+            </option>
+            <option value="supplier_az">Supplier A-Z</option>
+            <option value="supplier_za">Supplier Z-A</option>
+            <option value="value_desc">Value high-low</option>
+            <option value="value_asc">Value low-high</option>
+          </select>
+        </div>
+
+        <div className="flex flex-col gap-3 pt-2">
+          <button
+            type="button"
+            onClick={clearFilters}
+            disabled={!hasActiveFilters}
+            className="rounded-xl border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800 disabled:opacity-40"
+          >
+            Clear Filters
+          </button>
+
+          <button
+            type="button"
+            onClick={exportToCSV}
+            className="rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-sm font-medium text-blue-200 transition hover:bg-blue-500/20"
+          >
+            Export CSV
+          </button>
+        </div>
+      </div>
+    </div>
+  </aside>
+) : null}
 
           <main className="min-w-0 space-y-6">
             <div className="overflow-hidden rounded-[30px] border border-blue-500/20 bg-slate-900 shadow-2xl shadow-blue-500/10">

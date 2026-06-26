@@ -559,14 +559,38 @@ export async function POST(req: NextRequest) {
     }
 
     const { data: company, error: companyError } = await supabase
-      .from("companies")
-      .select("id, plan")
-      .eq("id", sender.company_id)
-      .single();
+  .from("companies")
+  .select("id, plan, is_active, deleted_at")
+  .eq("id", sender.company_id)
+  .single();
 
-    if (companyError || !company) {
-      throw companyError || new Error("Company not found");
-    }
+if (companyError || !company) {
+  throw companyError || new Error("Company not found");
+}
+
+if (!company.is_active || company.deleted_at) {
+  await logEmailImport({
+    supabase,
+    companyId: sender.company_id,
+    forwardingSenderId,
+    senderEmail: forwardingFromEmail,
+    fromEmail: originalFromEmail,
+    subject,
+    messageId: emailId,
+    status: "rejected",
+    rejectionReason: company.deleted_at
+      ? "Workspace deleted"
+      : "Workspace deactivated",
+  });
+
+  return jsonResponse({
+    success: true,
+    ignored: true,
+    reason: company.deleted_at
+      ? "workspace_deleted"
+      : "workspace_deactivated",
+  });
+}
 
     const invoiceLimit = getInvoiceLimitForPlan(company.plan);
 

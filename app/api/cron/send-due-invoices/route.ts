@@ -167,9 +167,23 @@ async function processCompany({
   now,
 }: {
   supabase: any;
-  company: { id: string; name: string };
+  company: {
+    id: string;
+    name: string;
+    is_active?: boolean | null;
+    deleted_at?: string | null;
+  };
   now: Date;
 }) {
+  if (!company.is_active || company.deleted_at) {
+    return {
+      companyId: company.id,
+      companyName: company.name,
+      skipped: true,
+      reason: company.deleted_at ? "company_deleted" : "company_inactive",
+    };
+  }
+
   const { data: settings, error: settingsError } = await supabase
     .from("notification_settings")
     .select("*")
@@ -356,8 +370,9 @@ export async function GET(req: NextRequest) {
 
     const { data: companies, error: companyError } = await supabase
       .from("companies")
-      .select("id, name, is_active")
-      .eq("is_active", true);
+      .select("id, name, is_active, deleted_at")
+      .eq("is_active", true)
+      .is("deleted_at", null);
 
     if (companyError) {
       console.error("Failed to load companies for cron:", companyError);

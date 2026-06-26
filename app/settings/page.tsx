@@ -9,6 +9,10 @@ type CompanySettings = {
   name: string;
   billing_email: string | null;
   invoice_upload_count: number | null;
+  plan?: string | null;
+  subscription_status?: string | null;
+  is_active?: boolean | null;
+  deleted_at?: string | null;
 };
 
 type ForwardingSender = {
@@ -32,7 +36,7 @@ type EmailImport = {
   processed_at: string | null;
 };
 
-type SettingsTab = "workspace" | "forwarding";
+type SettingsTab = "workspace" | "forwarding" | "billing";
 type ImportStatusFilter =
   | "all"
   | "imported"
@@ -85,7 +89,9 @@ export default function SettingsPage() {
   const [company, setCompany] = useState<CompanySettings | null>(null);
   const [name, setName] = useState("");
   const [billingEmail, setBillingEmail] = useState("");
-  const [forwardingSenders, setForwardingSenders] = useState<ForwardingSender[]>([]);
+  const [forwardingSenders, setForwardingSenders] = useState<
+    ForwardingSender[]
+  >([]);
   const [emailImports, setEmailImports] = useState<EmailImport[]>([]);
   const [newForwardingEmail, setNewForwardingEmail] = useState("");
   const [statusFilter, setStatusFilter] = useState<ImportStatusFilter>("all");
@@ -94,6 +100,10 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [forwardingBusy, setForwardingBusy] = useState(false);
+  const [billingBusy, setBillingBusy] = useState(false);
+  const [deactivateBusy, setDeactivateBusy] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteUserBusy, setDeleteUserBusy] = useState(false);
 
   const [message, setMessage] = useState<{
     type: "success" | "error";
@@ -232,6 +242,181 @@ export default function SettingsPage() {
       });
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function openBillingPortal() {
+    setBillingBusy(true);
+    setMessage(null);
+
+    try {
+      const accessToken = await getAccessToken();
+      if (!accessToken) return;
+
+      const res = await fetch("/api/stripe/portal", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      const body = await readJsonResponse(res);
+
+      if (!res.ok) {
+        throw new Error(body?.error || "Failed to open billing portal");
+      }
+
+      if (!body?.url) {
+        throw new Error("Billing portal URL was not returned");
+      }
+
+      window.location.href = body.url;
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Failed to open billing portal",
+      });
+      setBillingBusy(false);
+    }
+  }
+
+  async function deactivateCompany() {
+    const confirmed = window.confirm(
+      "Deactivate this workspace? This will stop uploads, reminders, and email imports. You will be signed out."
+    );
+
+    if (!confirmed) return;
+
+    setDeactivateBusy(true);
+    setMessage(null);
+
+    try {
+      const accessToken = await getAccessToken();
+      if (!accessToken) return;
+
+      const res = await fetch("/api/company/deactivate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          reason: "Deactivated from settings page",
+        }),
+      });
+
+      const body = await readJsonResponse(res);
+
+      if (!res.ok) {
+        throw new Error(body?.error || "Failed to deactivate workspace");
+      }
+
+      await supabase.auth.signOut();
+      window.location.href = "/";
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Failed to deactivate workspace",
+      });
+      setDeactivateBusy(false);
+    }
+  }
+
+  async function deleteCompany() {
+    const confirmed = window.confirm(
+      "Delete this workspace? This will disable the company account and stop all reminders/imports. This action cannot be undone from the app."
+    );
+
+    if (!confirmed) return;
+
+    const typed = window.prompt("Type DELETE to confirm workspace deletion.");
+
+    if (typed !== "DELETE") return;
+
+    setDeleteBusy(true);
+    setMessage(null);
+
+    try {
+      const accessToken = await getAccessToken();
+      if (!accessToken) return;
+
+      const res = await fetch("/api/company/delete", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      const body = await readJsonResponse(res);
+
+      if (!res.ok) {
+        throw new Error(body?.error || "Failed to delete workspace");
+      }
+
+      await supabase.auth.signOut();
+      window.location.href = "/";
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Failed to delete workspace",
+      });
+      setDeleteBusy(false);
+    }
+  }
+
+  async function deleteUserAccount() {
+    const confirmed = window.confirm(
+      "Delete your user account? This removes your login from FlashFox. If you are the only workspace owner, you must delete the workspace first."
+    );
+
+    if (!confirmed) return;
+
+    const typed = window.prompt(
+      "Type DELETE USER to confirm account deletion."
+    );
+
+    if (typed !== "DELETE USER") return;
+
+    setDeleteUserBusy(true);
+    setMessage(null);
+
+    try {
+      const accessToken = await getAccessToken();
+      if (!accessToken) return;
+
+      const res = await fetch("/api/account/delete", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      const body = await readJsonResponse(res);
+
+      if (!res.ok) {
+        throw new Error(body?.error || "Failed to delete user account");
+      }
+
+      await supabase.auth.signOut();
+      window.location.href = "/";
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Failed to delete user account",
+      });
+      setDeleteUserBusy(false);
     }
   }
 
@@ -376,7 +561,7 @@ export default function SettingsPage() {
 
               <p className="mt-2 text-sm text-slate-400">
                 Manage your FlashFox workspace identity, billing contact, team
-                access, and invoice forwarding.
+                access, invoice forwarding, and account status.
               </p>
             </div>
 
@@ -407,9 +592,14 @@ export default function SettingsPage() {
           </div>
         ) : (
           <>
-            <div className="grid gap-4 md:grid-cols-3">
-              <Link href="/settings/team" className={`${cardBase} ${inactiveCard}`}>
-                <div className="text-sm font-medium text-white">Team settings</div>
+            <div className="grid gap-4 md:grid-cols-4">
+              <Link
+                href="/settings/team"
+                className={`${cardBase} ${inactiveCard}`}
+              >
+                <div className="text-sm font-medium text-white">
+                  Team settings
+                </div>
                 <div className="mt-2 text-sm text-slate-400">
                   Invite users and manage roles.
                 </div>
@@ -439,7 +629,22 @@ export default function SettingsPage() {
                   Email Import
                 </div>
                 <div className="mt-2 text-sm text-slate-400">
-                  Forward supplier invoices directly into FlashFox.
+                  Forward supplier invoices into FlashFox.
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab("billing")}
+                className={`${cardBase} ${
+                  activeTab === "billing" ? activeCard : inactiveCard
+                }`}
+              >
+                <div className="text-sm font-medium text-white">
+                  Billing & Account
+                </div>
+                <div className="mt-2 text-sm text-slate-400">
+                  Manage subscription and workspace status.
                 </div>
               </button>
             </div>
@@ -520,7 +725,138 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </div>
-            ) : (
+            ) : null}
+
+            {activeTab === "billing" ? (
+              <div className="space-y-6">
+                <div className="grid gap-6 lg:grid-cols-2">
+                  <div className="rounded-[30px] border border-slate-800 bg-slate-900 p-6 shadow-xl shadow-black/10">
+                    <div className="text-sm uppercase tracking-[0.14em] text-slate-500">
+                      Subscription
+                    </div>
+
+                    <h2 className="mt-3 text-2xl font-semibold text-white">
+                      Manage billing
+                    </h2>
+
+                    <p className="mt-3 text-sm leading-6 text-slate-400">
+                      Open the Stripe billing portal to update payment details,
+                      view invoices, or cancel your subscription. Cancelling a
+                      subscription keeps your workspace active on the free plan.
+                    </p>
+
+                    <div className="mt-6 space-y-3">
+                      <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 text-sm text-slate-300">
+                        Current plan:{" "}
+                        <span className="font-semibold text-white">
+                          {company?.plan || "free"}
+                        </span>
+                      </div>
+
+                      <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 text-sm text-slate-300">
+                        Subscription status:{" "}
+                        <span className="font-semibold text-white">
+                          {company?.subscription_status || "none"}
+                        </span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={openBillingPortal}
+                      disabled={billingBusy}
+                      className="mt-6 w-full rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {billingBusy
+                        ? "Opening billing portal..."
+                        : "Manage subscription"}
+                    </button>
+                  </div>
+
+                  <div className="rounded-[30px] border border-slate-800 bg-slate-900 p-6 shadow-xl shadow-black/10">
+                    <div className="text-sm uppercase tracking-[0.14em] text-slate-500">
+                      Workspace status
+                    </div>
+
+                    <h2 className="mt-3 text-2xl font-semibold text-white">
+                      Account controls
+                    </h2>
+
+                    <p className="mt-3 text-sm leading-6 text-slate-400">
+                      Deactivating stops workspace activity such as reminders,
+                      uploads, and email imports. Deleting soft-deletes the
+                      workspace and disables access.
+                    </p>
+
+                    <div className="mt-6 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm leading-6 text-amber-100">
+                      These actions affect the whole company workspace, not just
+                      your user login.
+                    </div>
+
+                    <div className="mt-6 space-y-3">
+                      <button
+                        type="button"
+                        onClick={deactivateCompany}
+                        disabled={
+                          deactivateBusy || deleteBusy || deleteUserBusy
+                        }
+                        className="w-full rounded-2xl border border-amber-500/30 px-4 py-3 text-sm font-semibold text-amber-200 transition hover:bg-amber-500/10 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {deactivateBusy
+                          ? "Deactivating..."
+                          : "Deactivate workspace"}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={deleteCompany}
+                        disabled={
+                          deleteBusy || deactivateBusy || deleteUserBusy
+                        }
+                        className="w-full rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm font-semibold text-rose-200 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {deleteBusy ? "Deleting..." : "Delete workspace"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-[30px] border border-slate-800 bg-slate-900 p-6 shadow-xl shadow-black/10">
+                  <div className="text-sm uppercase tracking-[0.14em] text-slate-500">
+                    User account
+                  </div>
+
+                  <h2 className="mt-3 text-2xl font-semibold text-white">
+                    Delete your login
+                  </h2>
+
+                  <p className="mt-3 text-sm leading-6 text-slate-400">
+                    This deletes your personal user login. It does not delete
+                    the company workspace unless the workspace is deleted
+                    separately.
+                  </p>
+
+                  <div className="mt-6 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm leading-6 text-rose-100">
+                    If you are the only workspace owner, you must transfer
+                    ownership or delete the workspace before deleting your user
+                    account.
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={deleteUserAccount}
+                    disabled={deleteUserBusy || deactivateBusy || deleteBusy}
+                    className="mt-6 w-full rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm font-semibold text-rose-200 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {deleteUserBusy
+                      ? "Deleting user account..."
+                      : "Delete my user account"}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {activeTab === "forwarding" ? (
               <div className="rounded-[30px] border border-slate-800 bg-slate-900 p-6 shadow-xl shadow-black/10">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div>
@@ -555,15 +891,16 @@ export default function SettingsPage() {
                   <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm leading-6 text-slate-400">
                     <li>Add your accounts email address below.</li>
                     <li>
-                      Create an Outlook or Gmail rule to forward invoice emails to{" "}
+                      Create an Outlook or Gmail rule to forward invoice emails
+                      to{" "}
                       <span className="font-medium text-white">
                         invoices@flashfox.co.uk
                       </span>
                       .
                     </li>
                     <li>
-                      FlashFox receives the email, checks the sender is approved,
-                      and imports invoice PDFs automatically.
+                      FlashFox receives the email, checks the sender is
+                      approved, and imports invoice PDFs automatically.
                     </li>
                     <li>Exact duplicate PDFs are blocked and recorded below.</li>
                   </ol>
@@ -596,7 +933,9 @@ export default function SettingsPage() {
                         className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-950/70 p-4 sm:flex-row sm:items-center sm:justify-between"
                       >
                         <div>
-                          <div className="font-medium text-white">{sender.email}</div>
+                          <div className="font-medium text-white">
+                            {sender.email}
+                          </div>
                           <div className="mt-1 text-xs text-slate-500">
                             {sender.is_active
                               ? "Active forwarding address"
@@ -654,7 +993,8 @@ export default function SettingsPage() {
                       {emailAutomationRate}%
                     </div>
                     <p className="mt-2 text-xs leading-5 text-blue-100/80">
-                      Share of email imports captured from supplier-originated forwards.
+                      Share of email imports captured from supplier-originated
+                      forwards.
                     </p>
                   </div>
                 </div>
@@ -787,10 +1127,14 @@ export default function SettingsPage() {
                         {filteredEmailImports.length ? (
                           filteredEmailImports.map((item) => {
                             const createdAt = new Date(item.created_at);
-                            const sender = item.sender_email || item.from_email || "-";
+                            const sender =
+                              item.sender_email || item.from_email || "-";
 
                             return (
-                              <tr key={item.id} className="border-t border-slate-800">
+                              <tr
+                                key={item.id}
+                                className="border-t border-slate-800"
+                              >
                                 <td className="px-3 py-4 text-slate-400 sm:px-4">
                                   <div className="font-medium text-slate-300">
                                     {createdAt.toLocaleDateString()}
@@ -830,7 +1174,9 @@ export default function SettingsPage() {
                                       item.status
                                     )}`}
                                   >
-                                    <span className="truncate">{item.status}</span>
+                                    <span className="truncate">
+                                      {item.status}
+                                    </span>
                                   </span>
                                 </td>
 
@@ -861,7 +1207,9 @@ export default function SettingsPage() {
                                       Open
                                     </Link>
                                   ) : (
-                                    <span className="text-xs text-slate-600">-</span>
+                                    <span className="text-xs text-slate-600">
+                                      -
+                                    </span>
                                   )}
                                 </td>
                               </tr>
@@ -884,7 +1232,7 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </div>
-            )}
+            ) : null}
           </>
         )}
       </div>

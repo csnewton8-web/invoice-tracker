@@ -128,13 +128,22 @@ export async function POST(req: NextRequest) {
 
     const { data: company, error: companyError } = await supabase
       .from("companies")
-      .select("plan")
+      .select("plan, is_active, deleted_at")
       .eq("id", companyId)
       .single();
 
     if (companyError || !company) {
       console.error("Failed to load company plan:", companyError);
       return jsonError("Could not load company details", 500);
+    }
+
+    if (!company.is_active || company.deleted_at) {
+      return jsonError(
+        company.deleted_at
+          ? "Workspace has been deleted"
+          : "Workspace has been deactivated",
+        403
+      );
     }
 
     const invoiceLimit = getInvoiceLimitForPlan(company.plan);
