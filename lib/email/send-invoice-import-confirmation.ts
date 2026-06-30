@@ -35,10 +35,7 @@ function getAppUrl() {
 }
 
 function getLogoUrl() {
-  return (
-    process.env.NEXT_PUBLIC_FLASHFOX_LOGO_URL ||
-    `${getAppUrl()}/flashfox-logo.png`
-  );
+  return `${getAppUrl()}/logo/flashfox-logo.png`;
 }
 
 function escapeHtml(value: string | number | null | undefined) {
