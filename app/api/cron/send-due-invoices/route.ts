@@ -120,7 +120,8 @@ function shouldSendToday(
   timeZone: string,
   sendDays: string[] | null | undefined,
   sendTime: string | null | undefined,
-  lastSentAt: string | null | undefined
+  lastSentAt: string | null | undefined,
+  forceSend = false
 ) {
   const nowLocal = getLocalParts(now, timeZone);
 
@@ -129,15 +130,15 @@ function shouldSendToday(
       ? sendDays.map((d) => d.toLowerCase())
       : DEFAULT_SEND_DAYS;
 
-  if (!selectedDays.includes(nowLocal.localDay)) {
+  if (!forceSend && !selectedDays.includes(nowLocal.localDay)) {
     return { shouldSend: false, reason: "not_scheduled_day" as const, nowLocal };
   }
 
-  if (nowLocal.localTime < normaliseSendTime(sendTime)) {
+  if (!forceSend && nowLocal.localTime < normaliseSendTime(sendTime)) {
     return { shouldSend: false, reason: "not_scheduled_time" as const, nowLocal };
   }
 
-  if (lastSentAt) {
+  if (lastSentAt && !forceSend) {
     const lastLocal = getLocalParts(new Date(lastSentAt), timeZone);
 
     if (lastLocal.localDate === nowLocal.localDate) {
@@ -165,6 +166,7 @@ async function processCompany({
   supabase,
   company,
   now,
+  forceSend,
 }: {
   supabase: any;
   company: {
@@ -174,6 +176,7 @@ async function processCompany({
     deleted_at?: string | null;
   };
   now: Date;
+  forceSend: boolean;
 }) {
   if (!company.is_active || company.deleted_at) {
     return {
@@ -206,7 +209,26 @@ async function processCompany({
   const sendTime = settings?.send_time || "08:00:00";
   const lastSentAt = settings?.last_sent_at || null;
 
-  const sendDecision = shouldSendToday(now, timeZone, sendDays, sendTime, lastSentAt);
+  const sendDecision = shouldSendToday(
+    now,
+    timeZone,
+    sendDays,
+    sendTime,
+    lastSentAt,
+    forceSend
+  );
+
+  console.log("Send decision", {
+    company: company.name,
+    shouldSend: sendDecision.shouldSend,
+    reason: sendDecision.reason,
+    localDate: sendDecision.nowLocal.localDate,
+    localTime: sendDecision.nowLocal.localTime,
+    timezone: timeZone,
+    sendDays,
+    sendTime,
+    forceSend,
+  });
 
   if (!sendDecision.shouldSend) {
     return {
@@ -262,18 +284,15 @@ async function processCompany({
   const dueToday = unpaid.filter((inv: any) => inv.due_date === todayLocalDate);
 
   const dueThisWeek = unpaid.filter(
-    (inv: any) =>
-      inv.due_date > todayLocalDate && inv.due_date <= endOfThisWeek
+    (inv: any) => inv.due_date > todayLocalDate && inv.due_date <= endOfThisWeek
   );
 
   const dueThisMonth = unpaid.filter(
-    (inv: any) =>
-      inv.due_date > endOfThisWeek && inv.due_date < nextMonthStart
+    (inv: any) => inv.due_date > endOfThisWeek && inv.due_date < nextMonthStart
   );
 
   const dueNextMonth = unpaid.filter(
-    (inv: any) =>
-      inv.due_date >= nextMonthStart && inv.due_date < monthAfterNextStart
+    (inv: any) => inv.due_date >= nextMonthStart && inv.due_date < monthAfterNextStart
   );
 
   const dueLater = unpaid.filter(
@@ -295,6 +314,16 @@ async function processCompany({
     finalDueNextMonth.length ||
     finalDueLater.length;
 
+  console.log("Invoice counts", {
+    company: company.name,
+    overdue: finalOverdue.length,
+    dueToday: finalDueToday.length,
+    dueThisWeek: finalDueThisWeek.length,
+    dueThisMonth: finalDueThisMonth.length,
+    dueNextMonth: finalDueNextMonth.length,
+    dueLater: finalDueLater.length,
+  });
+
   if (!hasAnything) {
     return {
       companyId: company.id,
@@ -308,6 +337,12 @@ async function processCompany({
 
   const payLinkUrl = await getPayLinkUrl(supabase, company.id);
 
+  console.log("ABOUT TO SEND EMAIL", {
+    company: company.name,
+    recipients: to.length,
+    forceSend,
+  });
+
   await sendDueDigest({
     to,
     companyName: company.name,
@@ -318,6 +353,11 @@ async function processCompany({
     dueNextMonth: finalDueNextMonth,
     dueLater: finalDueLater,
     payLinkUrl,
+  });
+
+  console.log("EMAIL SENT", {
+    company: company.name,
+    recipients: to.length,
   });
 
   const { error: updateError } = await supabase.from("notification_settings").upsert(
@@ -355,14 +395,22 @@ async function processCompany({
     localDate: todayLocalDate,
     localTime: sendDecision.nowLocal.localTime,
     timezone: timeZone,
+    forced: forceSend,
   };
 }
 
 export async function GET(req: NextRequest) {
   const now = new Date();
+  const forceSend = req.nextUrl.searchParams.get("force") === "true";
 
   try {
+    console.log("CRON STARTED", {
+      ranAt: now.toISOString(),
+      forceSend,
+    });
+
     if (!verifyCronRequest(req)) {
+      console.log("CRON AUTH FAILED");
       return jsonError("Unauthorized", 401);
     }
 
@@ -379,14 +427,22 @@ export async function GET(req: NextRequest) {
       return jsonError("Cron failed", 500);
     }
 
+    console.log("Companies found", companies?.length || 0);
+
     const results = [];
 
     for (const company of companies || []) {
       try {
+        console.log("Processing company", {
+          companyId: company.id,
+          companyName: company.name,
+        });
+
         const result = await processCompany({
           supabase,
           company,
           now,
+          forceSend,
         });
 
         results.push(result);
@@ -408,6 +464,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       success: true,
       ranAt: now.toISOString(),
+      forceSend,
       processed: results.length,
       results,
     });

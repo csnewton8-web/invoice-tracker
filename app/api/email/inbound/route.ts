@@ -11,6 +11,7 @@ import {
 import { getInvoiceLimitForPlan } from "@/lib/plans";
 import { createAuditLog } from "@/lib/audit-log";
 import { detectDuplicateInvoice } from "@/lib/duplicate-invoices";
+import { sendInvoiceImportConfirmation } from "@/lib/email/send-invoice-import-confirmation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -559,38 +560,38 @@ export async function POST(req: NextRequest) {
     }
 
     const { data: company, error: companyError } = await supabase
-  .from("companies")
-  .select("id, plan, is_active, deleted_at")
-  .eq("id", sender.company_id)
-  .single();
+      .from("companies")
+      .select("id, name, plan, is_active, deleted_at")
+      .eq("id", sender.company_id)
+      .single();
 
-if (companyError || !company) {
-  throw companyError || new Error("Company not found");
-}
+    if (companyError || !company) {
+      throw companyError || new Error("Company not found");
+    }
 
-if (!company.is_active || company.deleted_at) {
-  await logEmailImport({
-    supabase,
-    companyId: sender.company_id,
-    forwardingSenderId,
-    senderEmail: forwardingFromEmail,
-    fromEmail: originalFromEmail,
-    subject,
-    messageId: emailId,
-    status: "rejected",
-    rejectionReason: company.deleted_at
-      ? "Workspace deleted"
-      : "Workspace deactivated",
-  });
+    if (!company.is_active || company.deleted_at) {
+      await logEmailImport({
+        supabase,
+        companyId: sender.company_id,
+        forwardingSenderId,
+        senderEmail: forwardingFromEmail,
+        fromEmail: originalFromEmail,
+        subject,
+        messageId: emailId,
+        status: "rejected",
+        rejectionReason: company.deleted_at
+          ? "Workspace deleted"
+          : "Workspace deactivated",
+      });
 
-  return jsonResponse({
-    success: true,
-    ignored: true,
-    reason: company.deleted_at
-      ? "workspace_deleted"
-      : "workspace_deactivated",
-  });
-}
+      return jsonResponse({
+        success: true,
+        ignored: true,
+        reason: company.deleted_at
+          ? "workspace_deleted"
+          : "workspace_deactivated",
+      });
+    }
 
     const invoiceLimit = getInvoiceLimitForPlan(company.plan);
 
@@ -878,6 +879,22 @@ if (!company.is_active || company.deleted_at) {
           status: "failed",
           rejectionReason:
             error instanceof Error ? error.message : "Processing failed",
+        });
+      }
+    }
+
+    if (createdInvoices.length) {
+      try {
+        await sendInvoiceImportConfirmation({
+          to: forwardingFromEmail,
+          companyName: company.name,
+          invoices: createdInvoices,
+        });
+      } catch (confirmationError) {
+        console.error("Failed to send invoice import confirmation email:", {
+          emailId,
+          to: forwardingFromEmail,
+          error: confirmationError,
         });
       }
     }

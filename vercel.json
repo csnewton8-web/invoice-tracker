@@ -1,8 +1,8 @@
 {
   "crons": [
     {
-      "path": "/api/cron/send-due-invoices",
-      "schedule": "0 7 * * *"
-    }
+  "path": "/api/cron/send-due-invoices",
+  "schedule": "*/15 * * * *"
+}
   ]
 }
